@@ -36,6 +36,7 @@ void init_stuff (int argc, char *argv[])
   struct Brush *b;
   gboolean can_xinput, success;
   gchar *tmppath, *tmpfn;
+  gint main_monitor_id;
 
   // create some data structures needed to populate the preferences
   ui.default_page.bg = g_new(struct Background, 1);
@@ -182,7 +183,11 @@ void init_stuff (int argc, char *argv[])
   screen = gtk_widget_get_screen(winMain);
   ui.screen_width = gdk_screen_get_width(screen);
   ui.screen_height = gdk_screen_get_height(screen);
-  
+ 
+  // get monitor geometry of monitor on which the program lives currently
+  main_monitor_id = gdk_screen_get_monitor_at_window(screen, GDK_WINDOW (winMain));
+  gdk_screen_get_monitor_geometry(screen,main_monitor_id,&ui.monitor_geometry);
+
   can_xinput = FALSE;
   dev_list = gdk_devices_list();
   while (dev_list != NULL) {
@@ -286,6 +291,7 @@ void init_stuff (int argc, char *argv[])
   success = open_journal(tmpfn);
   g_free(tmpfn);
   set_cursor_busy(FALSE);
+
   if (!success) {
     w = gtk_message_dialog_new(GTK_WINDOW (winMain), GTK_DIALOG_DESTROY_WITH_PARENT,
        GTK_MESSAGE_ERROR, GTK_BUTTONS_OK, _("Error opening file '%s'"), argv[1]);

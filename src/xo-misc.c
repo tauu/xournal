@@ -351,7 +351,7 @@ void get_pointer_coords(GdkEvent *event, gdouble *ret)
 
 void fix_xinput_coords(GdkEvent *event)
 {
-  double *axes, *px, *py, axis_width;
+  double *axes, *px, *py, axis_width, axis_height;
   GdkDevice *device;
   int wx, wy, sx, sy, ix, iy;
 
@@ -381,11 +381,12 @@ void fix_xinput_coords(GdkEvent *event)
   else {
     gdk_window_get_origin(GTK_WIDGET(canvas)->window, &wx, &wy);  
     axis_width = device->axes[0].max - device->axes[0].min;
+    axis_height = device->axes[1].max - device->axes[1].min;
     if (axis_width>EPSILON)
-      *px = (axes[0]/axis_width)*ui.screen_width + sx - wx;
-    axis_width = device->axes[1].max - device->axes[1].min;
-    if (axis_width>EPSILON)
-      *py = (axes[1]/axis_width)*ui.screen_height + sy - wy;
+      //*px = (axes[0]/axis_width)*ui.screen_width + sx - wx;
+      *px = (axes[0]/axis_width)*ui.monitor_geometry.width + ui.monitor_geometry.x + sx - wx;
+    if (axis_height>EPSILON)
+      *py = (axes[1]/axis_height)*ui.monitor_geometry.height + ui.monitor_geometry.y + sy - wy;
   }
 #else
   if (!finite(*px) || !finite(*py) || (*px==0. && *py==0.)) {

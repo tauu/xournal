@@ -2,12 +2,12 @@
 #include <libgnomecanvas/libgnomecanvas.h>
 #include <poppler/glib/poppler.h>
 
-// #define INPUT_DEBUG
+//#define INPUT_DEBUG
 /* uncomment this line if you experience event-processing problems
    and want to list the input events received by xournal. Caution, lots
    of output (redirect to a file). */
 
-// #define ENABLE_XINPUT_BUGFIX
+#define ENABLE_XINPUT_BUGFIX
 /* comment out this line if you are experiencing calibration problems with
    XInput and want to try things differently. This will probably break
    on-the-fly display rotation after application startup, though. */
@@ -255,6 +255,7 @@ typedef struct UIData {
   gboolean saved_is_corestroke;
   GdkDevice *stroke_device; // who's painting this stroke
   int screen_width, screen_height; // initial screen size, for XInput events
+  GdkRectangle monitor_geometry; // monitor geometry of main monitor (height, width, origin), necessary for xinput events and multimonitor setups on windows
   double hand_refpt[2];
   int hand_scrollto_cx, hand_scrollto_cy;
   gboolean hand_scrollto_pending;

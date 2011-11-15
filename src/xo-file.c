@@ -1414,7 +1414,9 @@ void init_config_default(void)
 #if GTK_CHECK_VERSION(2,10,0)
   ui.print_settings = NULL;
 #endif
-  
+  // empty hook commands
+  ui.pre_next_page_cmd = NULL;
+  ui.pre_prev_page_cmd = NULL;
 }
 
 #if GLIB_CHECK_VERSION(2,6,0)
@@ -1694,6 +1696,12 @@ void save_config_to_file(void)
   update_keyval("tools", "default_font_size",
     _(" default font size"),
     g_strdup_printf("%.1f", ui.default_font_size));
+  update_keyval("hooks", "pre_next_page_cmd",
+    _("command that is executed before changing to the next page"),
+    g_strdup((ui.pre_next_page_cmd!=NULL)?ui.pre_next_page_cmd:""));
+  update_keyval("hooks", "pre_prev_page_cmd",
+    _("command that is executed before changing to the prev page"),
+    g_strdup((ui.pre_prev_page_cmd!=NULL)?ui.pre_prev_page_cmd:""));
 
   buf = g_key_file_to_data(ui.config_data, NULL, NULL);
   if (buf == NULL) return;
@@ -1982,5 +1990,7 @@ void load_config_from_file(void)
   if (parse_keyval_string("tools", "default_font", &str))
     if (str!=NULL) { g_free(ui.default_font_name); ui.default_font_name = str; }
   parse_keyval_float("tools", "default_font_size", &ui.default_font_size, 1., 200.);
+  parse_keyval_string("hooks", "pre_next_page_cmd", &ui.pre_next_page_cmd);
+  parse_keyval_string("hooks", "pre_prev_page_cmd", &ui.pre_prev_page_cmd);
 #endif
 }

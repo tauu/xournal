@@ -297,6 +297,8 @@ typedef struct UIData {
   GtkPrintSettings *print_settings;
 #endif
   gboolean poppler_force_cairo; // force poppler to use cairo
+  gchar * pre_next_page_cmd;  // command that should be executed before switching to the next page
+  gchar * pre_prev_page_cmd;  // command that should be executed before switching to the previous page
 } UIData;
 
 #define BRUSH_LINKED 0

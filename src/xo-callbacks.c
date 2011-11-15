@@ -997,6 +997,8 @@ on_viewPreviousPage_activate           (GtkMenuItem     *menuitem,
                                         gpointer         user_data)
 {
   end_text();
+  // apply pre page change hook
+  system(ui.pre_prev_page_cmd);
   if (ui.pageno == 0) return;
   do_switch_page(ui.pageno-1, TRUE, FALSE);
 }
@@ -1007,6 +1009,8 @@ on_viewNextPage_activate               (GtkMenuItem     *menuitem,
                                         gpointer         user_data)
 {
   end_text();
+  // apply pre page change hook
+  system(ui.pre_next_page_cmd);
   if (ui.pageno == journal.npages-1) { // create a page at end
     on_journalNewPageEnd_activate(menuitem, user_data);
     return;

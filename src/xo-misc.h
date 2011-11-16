@@ -116,6 +116,11 @@ wrapper_poppler_page_render_to_pixbuf (PopplerPage *page,
 			       int rotation,
 			       GdkPixbuf *pixbuf);
 
+// history notification via socket
+void send_history_notify(const char * msg);
+// run a shell command without popping up a terminal window 
+void system_no_window(const char * cmd);
+
 // defines for paper rulings
 
 #define RULING_MARGIN_COLOR 0xff0080ff

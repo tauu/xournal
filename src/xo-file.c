@@ -1417,6 +1417,13 @@ void init_config_default(void)
   // empty hook commands
   ui.pre_next_page_cmd = NULL;
   ui.pre_prev_page_cmd = NULL;
+
+  // default 
+  ui.notify_enabled = FALSE;
+  ui.notify_host = "127.0.0.1";
+  ui.notify_port = "1337";
+  ui.notify_next_page_msg = NULL;
+  ui.notify_prev_page_msg = NULL;
 }
 
 #if GLIB_CHECK_VERSION(2,6,0)
@@ -1702,6 +1709,21 @@ void save_config_to_file(void)
   update_keyval("hooks", "pre_prev_page_cmd",
     _("command that is executed before changing to the prev page"),
     g_strdup((ui.pre_prev_page_cmd!=NULL)?ui.pre_prev_page_cmd:""));
+  update_keyval("history_notification", "notify_enabled",
+    _("should a server be notified of page changes?"),
+    g_strdup((ui.notify_enabled)?"true":"false"));
+  update_keyval("history_notification", "notify_host",
+    _("name/ip of server that should be notified of page changes"),
+    g_strdup((ui.notify_host!=NULL)?ui.notify_host:""));
+  update_keyval("history_notification", "notify_port",
+    _("port of server that should be notified of page changes"),
+    g_strdup((ui.notify_port!=NULL)?ui.notify_port:""));
+  update_keyval("history_notification", "notify_next_page_msg",
+    _("message to send the server if the program switches to the next page"),
+    g_strdup((ui.notify_next_page_msg!=NULL)?ui.notify_next_page_msg:""));
+  update_keyval("history_notification", "notify_prev_page_msg",
+    _("message to send the server if the program switches to the previous page"),
+    g_strdup((ui.notify_prev_page_msg!=NULL)?ui.notify_prev_page_msg:""));
 
   buf = g_key_file_to_data(ui.config_data, NULL, NULL);
   if (buf == NULL) return;
@@ -1992,5 +2014,10 @@ void load_config_from_file(void)
   parse_keyval_float("tools", "default_font_size", &ui.default_font_size, 1., 200.);
   parse_keyval_string("hooks", "pre_next_page_cmd", &ui.pre_next_page_cmd);
   parse_keyval_string("hooks", "pre_prev_page_cmd", &ui.pre_prev_page_cmd);
+  parse_keyval_boolean("history_notification", "notify_enabled", &ui.notify_enabled);
+  parse_keyval_string("history_notification", "notify_host", &ui.notify_host);
+  parse_keyval_string("history_notification", "notify_port", &ui.notify_port);
+  parse_keyval_string("history_notification", "notify_next_page_msg", &ui.notify_next_page_msg);
+  parse_keyval_string("history_notification", "notify_prev_page_msg", &ui.notify_prev_page_msg);
 #endif
 }

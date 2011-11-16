@@ -8,6 +8,19 @@
 #include <libgnomecanvas/libgnomecanvas.h>
 #include <gdk/gdkkeysyms.h>
 
+#ifdef WIN32
+// WINVER 0x0501 or greater is needed for getaddrinfo
+#define WINVER 0x0501
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#endif
+
 #include "xournal.h"
 #include "xo-interface.h"
 #include "xo-support.h"
@@ -2301,4 +2314,102 @@ wrapper_poppler_page_render_to_pixbuf (PopplerPage *page,
 
   wrapper_copy_cairo_surface_to_pixbuf (surface, pixbuf);
   cairo_surface_destroy (surface);
+}
+
+
+void send_history_notify(const char * msg) {
+  SOCKET ConnectSocket = INVALID_SOCKET;
+  int iResult = 0;
+  struct addrinfo *result = NULL;
+  struct addrinfo *ptr = NULL;
+  struct addrinfo hints;
+  int recvbuflen = 256;
+  char recvbuf[recvbuflen];
+  unsigned long transmit_timeout = 200;
+  int transmit_timeout_len = sizeof(transmit_timeout);
+
+  memset( &hints, 0, sizeof(hints) );
+  hints.ai_family = AF_INET;        //prefer IPv4
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+
+  // get addr of host
+  iResult = getaddrinfo(ui.notify_host, ui.notify_port, &hints, &result);
+  if (iResult != 0) {
+    return;
+  }
+
+  // Attempt to connect to the first address returned by
+  // the call to getaddrinfo
+  ptr=result;
+
+  while (ptr != NULL && ConnectSocket == SOCKET_ERROR) {
+    // Create a SOCKET for connecting to server
+    ConnectSocket = socket(ptr->ai_family, ptr->ai_socktype, 
+	ptr->ai_protocol);
+    if (ConnectSocket != INVALID_SOCKET) {
+      // make calls to the socket non blocking, so we don't block the gui
+      setsockopt(ConnectSocket,SOL_SOCKET,SO_SNDTIMEO,
+	  (char *) transmit_timeout, transmit_timeout_len);
+      setsockopt(ConnectSocket,SOL_SOCKET,SO_RCVTIMEO,
+	  (char *) transmit_timeout, transmit_timeout_len);
+      // Connect to server.
+      iResult = connect( ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
+      if (iResult == SOCKET_ERROR) {
+	closesocket(ConnectSocket);
+	g_debug("History Notify - Connection Error");
+	ConnectSocket = INVALID_SOCKET;
+      }
+      else {
+	g_debug("Hisory Notify - Connected");
+      }
+    }
+    ptr = ptr->ai_next;
+  }
+  freeaddrinfo(result);
+
+  if (ConnectSocket == INVALID_SOCKET) {
+    g_printf("History Notify - Unable to connect to server!\n");
+    return;
+  }
+
+  // Send message
+  iResult = send(ConnectSocket, msg, (int) strlen(msg), 0);
+  if (iResult == SOCKET_ERROR) {
+    g_debug("History Notify - send failed");
+    closesocket(ConnectSocket);
+    return;
+  }
+  
+  // close socket as we don't need it any more currently
+  iResult = shutdown(ConnectSocket, SD_SEND);
+  if (iResult == SOCKET_ERROR) {
+    g_debug("History Notify - shutdown failed");
+    closesocket(ConnectSocket);
+    return;
+  }
+
+  // recieve response, we don't really care what the server answers
+  // but when it answer we know that it has processed the command
+  iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
+
+  // close socket
+  iResult = closesocket(ConnectSocket);
+  g_debug("History Notify - socket closed: %d",iResult);
+}
+
+/* run a shell command without popping up a terminal window */
+void system_no_window(const char * cmd) {
+#ifdef WIN32
+    STARTUPINFO         si = { sizeof(si) };
+    PROCESS_INFORMATION pi = { 0 };
+ 
+    if ( CreateProcess(cmd, NULL, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi) )
+    {
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+    }
+#else
+  system(cmd);
+#endif
 }

@@ -2,7 +2,7 @@
 #include <libgnomecanvas/libgnomecanvas.h>
 #include <poppler/glib/poppler.h>
 
-#define INPUT_DEBUG
+//#define INPUT_DEBUG
 /* uncomment this line if you experience event-processing problems
    and want to list the input events received by xournal. Caution, lots
    of output (redirect to a file). */
@@ -315,6 +315,11 @@ typedef struct UIData {
   gboolean poppler_force_cairo; // force poppler to use cairo
   gchar * pre_next_page_cmd;  // command that should be executed before switching to the next page
   gchar * pre_prev_page_cmd;  // command that should be executed before switching to the previous page
+  gboolean notify_enabled;
+  gchar * notify_host;
+  gchar * notify_port;
+  gchar * notify_next_page_msg;
+  gchar * notify_prev_page_msg;
 } UIData;
 
 #define BRUSH_LINKED 0

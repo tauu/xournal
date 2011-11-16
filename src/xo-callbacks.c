@@ -2,10 +2,6 @@
 #  include <config.h>
 #endif
 
-#ifdef WIN32
-#include <windows.h>
-#endif
-
 #include <math.h>
 #include <string.h>
 #include <gtk/gtk.h>
@@ -1002,7 +998,12 @@ on_viewPreviousPage_activate           (GtkMenuItem     *menuitem,
 {
   end_text();
   // apply pre page change hook
-  system(ui.pre_prev_page_cmd);
+  if (ui.notify_enabled) {
+    send_history_notify(ui.notify_prev_page_msg);
+  }
+  if (ui.pre_prev_page_cmd != NULL && strlen(ui.pre_prev_page_cmd) > 0) {
+    system_no_window(ui.pre_prev_page_cmd);
+  }
   if (ui.pageno == 0) return;
   do_switch_page(ui.pageno-1, TRUE, FALSE);
 }
@@ -1014,18 +1015,12 @@ on_viewNextPage_activate               (GtkMenuItem     *menuitem,
 {
   end_text();
   // apply pre page change hook
-#ifdef WIN32
-    STARTUPINFO         si = { sizeof(si) };
-    PROCESS_INFORMATION pi = { 0 };
- 
-    if ( CreateProcess(ui.pre_next_page_cmd, NULL, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi) )
-    {
-        CloseHandle(pi.hThread);
-        CloseHandle(pi.hProcess);
-    }
-#else
-  system(ui.pre_next_page_cmd);
-#endif
+  if (ui.notify_enabled) {
+    send_history_notify(ui.notify_next_page_msg);
+  }
+  if (ui.pre_next_page_cmd != NULL && strlen(ui.pre_next_page_cmd) > 0) {
+    system_no_window(ui.pre_next_page_cmd);
+  }
   if (ui.pageno == journal.npages-1) { // create a page at end
     on_journalNewPageEnd_activate(menuitem, user_data);
     return;

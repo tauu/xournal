@@ -7,6 +7,11 @@
 #include <gtk/gtk.h>
 #include <libgnomecanvas/libgnomecanvas.h>
 
+#ifdef WIN32
+#include <windows.h>
+#include <winsock2.h>
+#endif
+
 #include "xournal.h"
 #include "xo-interface.h"
 #include "xo-support.h"
@@ -22,9 +27,14 @@ GnomeCanvas *canvas;
 struct Journal journal; // the journal
 struct BgPdf bgpdf;  // the PDF loader stuff
 struct UIData ui;   // the user interface data
-struct UndoItem *undo, *redo; // the undo and redo stacks
+struct UndoItem *undo, *redo; // the undo and redo stacksK
 
 double DEFAULT_ZOOM;
+
+#ifdef WIN32
+//winsock data
+WSADATA wsaData;
+#endif
 
 void init_stuff (int argc, char *argv[])
 {
@@ -195,6 +205,13 @@ void init_stuff (int argc, char *argv[])
   g_signal_connect((gpointer) screen, "monitors-changed",
 		  				 G_CALLBACK (on_screen_change),
 						 NULL);
+#ifdef WIN32
+  /* setup winsock for page change notifications */
+  int iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+  if (iResult != 0) {
+      g_warning("WSAStartup failed: %d\n", iResult);
+  }
+#endif
 
   can_xinput = FALSE;
   dev_list = gdk_devices_list();
@@ -350,6 +367,11 @@ main (int argc, char *argv[])
 
   save_mru_list();
   if (ui.auto_save_prefs) save_config_to_file();
+
+#ifdef WIN32
+  // cleanup winsock
+  WSACleanup();
+#endif
   
   return 0;
 }

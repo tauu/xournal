@@ -2077,8 +2077,8 @@ void do_fullscreen(gboolean active)
   if (ui.fullscreen) {
 #ifdef WIN32
     gtk_window_get_size(GTK_WINDOW(winMain), &ui.pre_fullscreen_width, &ui.pre_fullscreen_height);
-    gtk_widget_set_size_request(GTK_WIDGET(winMain), gdk_screen_width(),
-                                                     gdk_screen_height());
+    gtk_widget_set_size_request(GTK_WIDGET(winMain), ui.monitor_geometry.width,
+                                                     ui.monitor_geometry.height);
 #endif
     gtk_window_fullscreen(GTK_WINDOW(winMain));
   }

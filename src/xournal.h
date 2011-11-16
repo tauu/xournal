@@ -10,7 +10,23 @@
 #define ENABLE_XINPUT_BUGFIX
 /* comment out this line if you are experiencing calibration problems with
    XInput and want to try things differently. This will probably break
-   on-the-fly display rotation after application startup, though. */
+   on-the-fly display rotation after application startup, though. 
+	One of following two options also have to be commented out in general */
+
+//#define XINPUT_TARGET_SCREEN
+#define XINPUT_TARGET_MONITOR
+/* this defines the x,y range of the xinput events send by the tablet. 
+ * For multimonitor setups a screen consists of multiple monitors and tablet
+ * can handle this situation differently.
+ *
+ * Wacom tablets send x,y coordinates relative to the whole screen.
+ *   => comment out XINPUT_TARGET_SCREEN
+ * Other tablets send x,y coordinates relative to one single monitor.
+ *   => comment out XINPUT_TARGET_MONITOR
+ *
+ * If none of them is commented out values send by the driver 
+ * are used without changes.
+ */
 
 #define FILE_DIALOG_SIZE_BUGFIX
 /* ugly, but should help users with versions of GTK+ that suffer from the

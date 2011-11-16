@@ -382,11 +382,25 @@ void fix_xinput_coords(GdkEvent *event)
     gdk_window_get_origin(GTK_WIDGET(canvas)->window, &wx, &wy);  
     axis_width = device->axes[0].max - device->axes[0].min;
     axis_height = device->axes[1].max - device->axes[1].min;
+
     if (axis_width>EPSILON)
-      //*px = (axes[0]/axis_width)*ui.screen_width + sx - wx;
+#if defined XINPUT_TARGET_SCREEN
+      *px = (axes[0]/axis_width)*ui.screen_width + sx - wx;
+#elif defined XINPUT_TARGET_MONITOR
       *px = (axes[0]/axis_width)*ui.monitor_geometry.width + ui.monitor_geometry.x + sx - wx;
+#else
+		*px = axes[0];
+#endif
+
     if (axis_height>EPSILON)
+#if defined XINPUT_TARGET_SCREEN
+      *px = (axes[1]/axis_height)*ui.screen_height + sy - wy;
+#elif defined XINPUT_TARGET_MONITOR
       *py = (axes[1]/axis_height)*ui.monitor_geometry.height + ui.monitor_geometry.y + sy - wy;
+#else 
+		*py = axes[1];
+#endif
+
   }
 #else
   if (!finite(*px) || !finite(*py) || (*px==0. && *py==0.)) {

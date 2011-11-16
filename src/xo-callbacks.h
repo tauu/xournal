@@ -441,6 +441,10 @@ on_vscroll_changed                     (GtkAdjustment   *adjustment,
                                         gpointer        user_data);
 
 void
+on_screen_change                       (GdkScreen		  *screen,
+													 gpointer		  user_data);
+
+void
 on_spinPageNo_value_changed            (GtkSpinButton   *spinbutton,
                                         gpointer         user_data);
 

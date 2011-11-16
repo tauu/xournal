@@ -2,7 +2,7 @@
 #include <libgnomecanvas/libgnomecanvas.h>
 #include <poppler/glib/poppler.h>
 
-//#define INPUT_DEBUG
+#define INPUT_DEBUG
 /* uncomment this line if you experience event-processing problems
    and want to list the input events received by xournal. Caution, lots
    of output (redirect to a file). */
@@ -13,8 +13,8 @@
    on-the-fly display rotation after application startup, though. 
 	One of following two options also have to be commented out in general */
 
-//#define XINPUT_TARGET_SCREEN
-#define XINPUT_TARGET_MONITOR
+#define XINPUT_TARGET_SCREEN
+//#define XINPUT_TARGET_MONITOR
 /* this defines the x,y range of the xinput events send by the tablet. 
  * For multimonitor setups a screen consists of multiple monitors and tablet
  * can handle this situation differently.

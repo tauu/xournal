@@ -181,12 +181,20 @@ void init_stuff (int argc, char *argv[])
   g_object_set_data (G_OBJECT (winMain), "canvas", canvas);
 
   screen = gtk_widget_get_screen(winMain);
-  ui.screen_width = gdk_screen_get_width(screen);
-  ui.screen_height = gdk_screen_get_height(screen);
- 
-  // get monitor geometry of monitor on which the program lives currently
-  main_monitor_id = gdk_screen_get_monitor_at_window(screen, GDK_WINDOW (winMain));
-  gdk_screen_get_monitor_geometry(screen,main_monitor_id,&ui.monitor_geometry);
+
+  /* store information about current screen and monitor */
+  on_screen_change(screen,NULL);
+
+  /* capture size_changed and monitors_changed events of the current screen,
+   * so that we can update ui.screen_* and ui.monitor_geometry if necessary
+	*/
+  g_signal_connect((gpointer) screen, "size-changed",
+		  				 G_CALLBACK (on_screen_change),
+						 NULL);
+
+  g_signal_connect((gpointer) screen, "monitors-changed",
+		  				 G_CALLBACK (on_screen_change),
+						 NULL);
 
   can_xinput = FALSE;
   dev_list = gdk_devices_list();

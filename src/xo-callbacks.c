@@ -2892,15 +2892,17 @@ on_vscroll_changed                     (GtkAdjustment   *adjustment,
 
 void
 on_screen_change                       (GdkScreen		  *screen,
-													 gpointer		  user_data){
+					 gpointer		  user_data){
   gint main_monitor_id = 0;
   /* update stored screen and monitor geometry */
   ui.screen_width = gdk_screen_get_width(screen);
   ui.screen_height = gdk_screen_get_height(screen);
 
   /* get monitor geometry of monitor on which the program lives currently */
-  main_monitor_id = gdk_screen_get_monitor_at_window(screen, GDK_WINDOW (winMain));
+  main_monitor_id = gdk_screen_get_monitor_at_window(screen, winMain->window);
   gdk_screen_get_monitor_geometry(screen,main_monitor_id,&ui.monitor_geometry);
+
+  g_debug("New Monitor: %d x %d",ui.monitor_geometry.width,ui.monitor_geometry.height);
 
   return;	
 };

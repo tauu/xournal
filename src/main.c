@@ -187,7 +187,7 @@ void init_stuff (int argc, char *argv[])
 
   /* capture size_changed and monitors_changed events of the current screen,
    * so that we can update ui.screen_* and ui.monitor_geometry if necessary
-	*/
+   */
   g_signal_connect((gpointer) screen, "size-changed",
 		  				 G_CALLBACK (on_screen_change),
 						 NULL);

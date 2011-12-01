@@ -394,7 +394,7 @@ void fix_xinput_coords(GdkEvent *event)
 
     if (axis_height>EPSILON)
 #if defined XINPUT_TARGET_SCREEN
-      *px = (axes[1]/axis_height)*ui.screen_height + sy - wy;
+      *py = (axes[1]/axis_height)*ui.screen_height + sy - wy;
 #elif defined XINPUT_TARGET_MONITOR
       *py = (axes[1]/axis_height)*ui.monitor_geometry.height + ui.monitor_geometry.y + sy - wy;
 #else 

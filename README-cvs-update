@@ -1,0 +1,29 @@
+Diese Anleitung erklärt wie man updates aus dem CVS Repository von xournal in die history_hooks version integriert.
+
+Schritt 1: updates von cvs holen 
+git checkout cvs
+export CVSROOT=:pserver:anonymous@xournal.cvs.sourceforge.net:/cvsroot/xournal login
+git cvsimport -o cvs -p x -v -d:pserver:anonymous@xournal.cvs.sourceforge.net:/cvsroot/xournal xournal
+
+Schritt 2: Änderungen in den master branch mergen
+git checkout master
+git merge cvs
+
+Schritt 3: Änderungen in den history_hooks branch mergen
+git checkout history_hooks
+git merge master
+
+
+Für den Fall das merge conflicts auftreten, können diese folgendermaßen behoben werden.
+Je nach Konflikt wählt man eine Option aus 
+
+1) Datei im aktuellen branch behalten:
+   git checkout --ours file
+2) Datei im "gemergten" branch behalten:
+   git checkout --theirs file
+3) per Hand mergen:
+   vi file, und nach <<<HEAD suchen
+
+Anschließend müssen noch die Änderungen committed werden.
+git add file1 file2 ...
+git commit

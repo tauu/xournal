@@ -1,3 +1,18 @@
+/*
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *
+ *  This software is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of  
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #ifdef HAVE_CONFIG_H
 #  include <config.h>
 #endif
@@ -7,8 +22,6 @@
 #include <gtk/gtk.h>
 #include <libgnomecanvas/libgnomecanvas.h>
 
-#include <libart_lgpl/art_vpath_dash.h>
-
 #include "xournal.h"
 #include "xo-callbacks.h"
 #include "xo-interface.h"
@@ -16,92 +29,7 @@
 #include "xo-misc.h"
 #include "xo-paint.h"
 
-/***** Win32 fix for gdk_cursor_new_from_pixmap() by Dirk Gerrits ****/
-
-#ifdef WIN32
-gboolean colors_too_similar(const GdkColor *colora, const GdkColor *colorb)
-{
-  return (abs(colora->red - colorb->red) < 256 &&
-          abs(colora->green - colorb->green) < 256 &&
-          abs(colora->blue - colorb->blue) < 256);
-}
-
-/* gdk_cursor_new_from_pixmap is broken on Windows.
-   this is a workaround using gdk_cursor_new_from_pixbuf. */
-GdkCursor* fixed_gdk_cursor_new_from_pixmap(GdkPixmap *source, GdkPixmap *mask,
-					    const GdkColor *fg, const GdkColor *bg,
-					    gint x, gint y)
-{
-  GdkPixmap *rgb_pixmap;
-  GdkGC *gc;
-  GdkPixbuf *rgb_pixbuf, *rgba_pixbuf;
-  GdkCursor *cursor;
-  int width, height;
-
-  /* HACK!  It seems impossible to work with RGBA pixmaps directly in
-     GDK-Win32.  Instead we pick some third color, different from fg
-     and bg, and use that as the 'transparent color'.  We do this using
-     colors_too_similar (see above) because two colors could be
-     unequal in GdkColor's 16-bit/sample, but equal in GdkPixbuf's
-     8-bit/sample. */
-  GdkColor candidates[3] = {{0,65535,0,0}, {0,0,65535,0}, {0,0,0,65535}};
-  GdkColor *trans = &candidates[0];
-  if (colors_too_similar(trans, fg) || colors_too_similar(trans, bg)) {
-    trans = &candidates[1];
-    if (colors_too_similar(trans, fg) || colors_too_similar(trans, bg)) {
-      trans = &candidates[2];
-    }
-  } /* trans is now guaranteed to be unique from fg and bg */
-
-  /* create an empty pixmap to hold the cursor image */
-  gdk_drawable_get_size(source, &width, &height);
-  rgb_pixmap = gdk_pixmap_new(NULL, width, height, 24);
-
-  /* blit the bitmaps defining the cursor onto a transparent background */
-  gc = gdk_gc_new(rgb_pixmap);
-  gdk_gc_set_fill(gc, GDK_SOLID);
-  gdk_gc_set_rgb_fg_color(gc, trans);
-  gdk_draw_rectangle(rgb_pixmap, gc, TRUE, 0, 0, width, height);
-  gdk_gc_set_fill(gc, GDK_OPAQUE_STIPPLED);
-  gdk_gc_set_stipple(gc, source);
-  gdk_gc_set_clip_mask(gc, mask);
-  gdk_gc_set_rgb_fg_color(gc, fg);
-  gdk_gc_set_rgb_bg_color(gc, bg);
-  gdk_draw_rectangle(rgb_pixmap, gc, TRUE, 0, 0, width, height);
-  gdk_gc_unref(gc);
-
-  /* create a cursor out of the created pixmap */
-  rgb_pixbuf = gdk_pixbuf_get_from_drawable(
-    NULL, rgb_pixmap, gdk_colormap_get_system(), 0, 0, 0, 0, width, height);
-  gdk_pixmap_unref(rgb_pixmap);
-  rgba_pixbuf = gdk_pixbuf_add_alpha(
-    rgb_pixbuf, TRUE, trans->red, trans->green, trans->blue);
-  gdk_pixbuf_unref(rgb_pixbuf);
-  cursor = gdk_cursor_new_from_pixbuf(gdk_display_get_default(), rgba_pixbuf, x, y);
-  gdk_pixbuf_unref(rgba_pixbuf);
-
-  return cursor;
-}
-#define gdk_cursor_new_from_pixmap fixed_gdk_cursor_new_from_pixmap
-#endif
-
-
 /************** drawing nice cursors *********/
-
-static char cursor_pen_bits[] = {
-   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-   0xc0, 0x01, 0xc0, 0x01, 0xc0, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-static char cursor_eraser_bits[] = {
-   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x0f, 0x08, 0x08, 0x08, 0x08,
-   0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0x08, 0xf8, 0x0f,
-   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-static char cursor_eraser_mask[] = {
-   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf8, 0x0f, 0xf8, 0x0f, 0xf8, 0x0f,
-   0xf8, 0x0f, 0xf8, 0x0f, 0xf8, 0x0f, 0xf8, 0x0f, 0xf8, 0x0f, 0xf8, 0x0f,
-   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 void set_cursor_busy(gboolean busy)
 {
@@ -118,6 +46,68 @@ void set_cursor_busy(gboolean busy)
     update_cursor();
   }
   gdk_display_sync(gdk_display_get_default());
+}
+
+#define PEN_CURSOR_RADIUS 1
+#define HILITER_CURSOR_RADIUS 3
+#define HILITER_BORDER_RADIUS 4
+
+GdkCursor *make_pen_cursor(guint color_rgba)
+{
+  int rowstride, x, y;
+  guchar col[4], *pixels;
+
+  if (ui.pen_cursor == TRUE) {  
+    return gdk_cursor_new(GDK_PENCIL);
+  }
+  
+  if (ui.pen_cursor_pix == NULL) {
+    ui.pen_cursor_pix = gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8, 16, 16);
+    if (ui.pen_cursor_pix == NULL) return NULL; // couldn't create pixbuf
+    gdk_pixbuf_fill(ui.pen_cursor_pix, 0xffffff00); // transparent white
+  }
+  rowstride = gdk_pixbuf_get_rowstride(ui.pen_cursor_pix);
+  pixels = gdk_pixbuf_get_pixels(ui.pen_cursor_pix);
+
+  col[0] = (color_rgba >> 24) & 0xff;
+  col[1] = (color_rgba >> 16) & 0xff;
+  col[2] = (color_rgba >> 8) & 0xff;
+  col[3] = 0xff; // solid
+  for (x = 8-PEN_CURSOR_RADIUS; x <= 8+PEN_CURSOR_RADIUS; x++)
+    for (y = 8-PEN_CURSOR_RADIUS; y <= 8+PEN_CURSOR_RADIUS; y++)
+      g_memmove(pixels + y*rowstride + x*4, col, 4);
+  
+  return gdk_cursor_new_from_pixbuf(gdk_display_get_default(), ui.pen_cursor_pix, 7, 7);
+}
+
+GdkCursor *make_hiliter_cursor(guint color_rgba)
+{
+  int rowstride, x, y;
+  guchar col[4], *pixels;
+  
+  if (ui.hiliter_cursor_pix == NULL) {
+    ui.hiliter_cursor_pix = gdk_pixbuf_new(GDK_COLORSPACE_RGB, TRUE, 8, 16, 16);
+    if (ui.hiliter_cursor_pix == NULL) return NULL; // couldn't create pixbuf
+    gdk_pixbuf_fill(ui.hiliter_cursor_pix, 0xffffff00); // transparent white
+  }
+  rowstride = gdk_pixbuf_get_rowstride(ui.hiliter_cursor_pix);
+  pixels = gdk_pixbuf_get_pixels(ui.hiliter_cursor_pix);
+
+  col[0] = col[1] = col[2] = 0; // black
+  col[3] = 0xff; // solid
+  for (x = 8-HILITER_BORDER_RADIUS; x <= 8+HILITER_BORDER_RADIUS; x++)
+    for (y = 8-HILITER_BORDER_RADIUS; y <= 8+HILITER_BORDER_RADIUS; y++)
+      g_memmove(pixels + y*rowstride + x*4, col, 4);
+
+  col[0] = (color_rgba >> 24) & 0xff;
+  col[1] = (color_rgba >> 16) & 0xff;
+  col[2] = (color_rgba >> 8) & 0xff;
+  col[3] = 0xff; // solid
+  for (x = 8-HILITER_CURSOR_RADIUS; x <= 8+HILITER_CURSOR_RADIUS; x++)
+    for (y = 8-HILITER_CURSOR_RADIUS; y <= 8+HILITER_CURSOR_RADIUS; y++)
+      g_memmove(pixels + y*rowstride + x*4, col, 4);
+  
+  return gdk_cursor_new_from_pixbuf(gdk_display_get_default(), ui.hiliter_cursor_pix, 7, 7);
 }
 
 void update_cursor(void)
@@ -137,29 +127,13 @@ void update_cursor(void)
   else if (ui.cur_item_type == ITEM_MOVESEL)
     ui.cursor = gdk_cursor_new(GDK_FLEUR);
   else if (ui.toolno[ui.cur_mapping] == TOOL_PEN) {
-    fg.red = (ui.cur_brush->color_rgba >> 16) & 0xff00;
-    fg.green = (ui.cur_brush->color_rgba >> 8) & 0xff00;
-    fg.blue = (ui.cur_brush->color_rgba >> 0) & 0xff00;
-    source = gdk_bitmap_create_from_data(NULL, cursor_pen_bits, 16, 16);
-    ui.cursor = gdk_cursor_new_from_pixmap(source, source, &fg, &bg, 7, 7);
-    gdk_bitmap_unref(source);
+    ui.cursor = make_pen_cursor(ui.cur_brush->color_rgba);
   }
   else if (ui.toolno[ui.cur_mapping] == TOOL_ERASER) {
-    source = gdk_bitmap_create_from_data(NULL, cursor_eraser_bits, 16, 16);
-    mask = gdk_bitmap_create_from_data(NULL, cursor_eraser_mask, 16, 16);
-    ui.cursor = gdk_cursor_new_from_pixmap(source, mask, &fg, &bg, 7, 7);
-    gdk_bitmap_unref(source);
-    gdk_bitmap_unref(mask);
+    ui.cursor = make_hiliter_cursor(0xffffffff);
   }
   else if (ui.toolno[ui.cur_mapping] == TOOL_HIGHLIGHTER) {
-    source = gdk_bitmap_create_from_data(NULL, cursor_eraser_bits, 16, 16);
-    mask = gdk_bitmap_create_from_data(NULL, cursor_eraser_mask, 16, 16);
-    bg.red = (ui.cur_brush->color_rgba >> 16) & 0xff00;
-    bg.green = (ui.cur_brush->color_rgba >> 8) & 0xff00;
-    bg.blue = (ui.cur_brush->color_rgba >> 0) & 0xff00;
-    ui.cursor = gdk_cursor_new_from_pixmap(source, mask, &fg, &bg, 7, 7);
-    gdk_bitmap_unref(source);
-    gdk_bitmap_unref(mask);
+    ui.cursor = make_hiliter_cursor(ui.cur_brush->color_rgba);
   }
   else if (ui.cur_item_type == ITEM_SELECTRECT) {
     ui.cursor = gdk_cursor_new(GDK_TCROSS);
@@ -523,712 +497,6 @@ void finalize_erasure(void)
      is traversed in the forward direction */
 }
 
-/************ selection tools ***********/
-
-void make_dashed(GnomeCanvasItem *item)
-{
-  double dashlen[2];
-  ArtVpathDash dash;
-  
-  dash.n_dash = 2;
-  dash.offset = 3.0;
-  dash.dash = dashlen;
-  dashlen[0] = dashlen[1] = 6.0;
-  gnome_canvas_item_set(item, "dash", &dash, NULL);
-}
-
-
-void start_selectrect(GdkEvent *event)
-{
-  double pt[2];
-  reset_selection();
-  
-  ui.cur_item_type = ITEM_SELECTRECT;
-  ui.selection = g_new(struct Selection, 1);
-  ui.selection->type = ITEM_SELECTRECT;
-  ui.selection->items = NULL;
-  ui.selection->layer = ui.cur_layer;
-
-  get_pointer_coords(event, pt);
-  ui.selection->bbox.left = ui.selection->bbox.right = pt[0];
-  ui.selection->bbox.top = ui.selection->bbox.bottom = pt[1];
- 
-  ui.selection->canvas_item = gnome_canvas_item_new(ui.cur_layer->group,
-      gnome_canvas_rect_get_type(), "width-pixels", 1, 
-      "outline-color-rgba", 0x000000ff,
-      "fill-color-rgba", 0x80808040,
-      "x1", pt[0], "x2", pt[0], "y1", pt[1], "y2", pt[1], NULL);
-  update_cursor();
-}
-
-void finalize_selectrect(void)
-{
-  double x1, x2, y1, y2;
-  GList *itemlist;
-  struct Item *item;
-
-  
-  ui.cur_item_type = ITEM_NONE;
-
-  if (ui.selection->bbox.left > ui.selection->bbox.right) {
-    x1 = ui.selection->bbox.right;  x2 = ui.selection->bbox.left;
-    ui.selection->bbox.left = x1;   ui.selection->bbox.right = x2;
-  } else {
-    x1 = ui.selection->bbox.left;  x2 = ui.selection->bbox.right;
-  }
-
-  if (ui.selection->bbox.top > ui.selection->bbox.bottom) {
-    y1 = ui.selection->bbox.bottom;  y2 = ui.selection->bbox.top;
-    ui.selection->bbox.top = y1;   ui.selection->bbox.bottom = y2;
-  } else {
-    y1 = ui.selection->bbox.top;  y2 = ui.selection->bbox.bottom;
-  }
-  
-  for (itemlist = ui.selection->layer->items; itemlist!=NULL; itemlist = itemlist->next) {
-    item = (struct Item *)itemlist->data;
-    if (item->bbox.left >= x1 && item->bbox.right <= x2 &&
-          item->bbox.top >= y1 && item->bbox.bottom <= y2) {
-      ui.selection->items = g_list_append(ui.selection->items, item); 
-    }
-  }
-  
-  if (ui.selection->items == NULL) {
-    // if we clicked inside a text zone ?  
-    item = click_is_in_text(ui.selection->layer, x1, y1);
-    if (item!=NULL && item==click_is_in_text(ui.selection->layer, x2, y2)) {
-      ui.selection->items = g_list_append(ui.selection->items, item);
-      g_memmove(&(ui.selection->bbox), &(item->bbox), sizeof(struct BBox));
-      gnome_canvas_item_set(ui.selection->canvas_item,
-        "x1", item->bbox.left, "x2", item->bbox.right, 
-        "y1", item->bbox.top, "y2", item->bbox.bottom, NULL);
-    }
-  }
-  
-  if (ui.selection->items == NULL) reset_selection();
-  else make_dashed(ui.selection->canvas_item);
-  update_cursor();
-  update_copy_paste_enabled();
-  update_font_button();
-}
-
-gboolean start_movesel(GdkEvent *event)
-{
-  double pt[2];
-  
-  if (ui.selection==NULL) return FALSE;
-  if (ui.cur_layer != ui.selection->layer) return FALSE;
-  
-  get_pointer_coords(event, pt);
-  if (ui.selection->type == ITEM_SELECTRECT) {
-    if (pt[0]<ui.selection->bbox.left || pt[0]>ui.selection->bbox.right ||
-        pt[1]<ui.selection->bbox.top  || pt[1]>ui.selection->bbox.bottom)
-      return FALSE;
-    ui.cur_item_type = ITEM_MOVESEL;
-    ui.selection->anchor_x = ui.selection->last_x = pt[0];
-    ui.selection->anchor_y = ui.selection->last_y = pt[1];
-    ui.selection->orig_pageno = ui.pageno;
-    ui.selection->move_pageno = ui.pageno;
-    ui.selection->move_layer = ui.selection->layer;
-    ui.selection->move_pagedelta = 0.;
-    gnome_canvas_item_set(ui.selection->canvas_item, "dash", NULL, NULL);
-    update_cursor();
-    return TRUE;
-  }
-  return FALSE;
-}
-
-gboolean start_resizesel(GdkEvent *event)
-{
-  double pt[2], resize_margin, hmargin, vmargin;
-
-  if (ui.selection==NULL) return FALSE;
-  if (ui.cur_layer != ui.selection->layer) return FALSE;
-
-  get_pointer_coords(event, pt);
-
-  if (ui.selection->type == ITEM_SELECTRECT) {
-    resize_margin = RESIZE_MARGIN/ui.zoom;
-    hmargin = (ui.selection->bbox.right-ui.selection->bbox.left)*0.3;
-    if (hmargin>resize_margin) hmargin = resize_margin;
-    vmargin = (ui.selection->bbox.bottom-ui.selection->bbox.top)*0.3;
-    if (vmargin>resize_margin) vmargin = resize_margin;
-
-    // make sure the click is within a box slightly bigger than the selection rectangle
-    if (pt[0]<ui.selection->bbox.left-resize_margin || 
-        pt[0]>ui.selection->bbox.right+resize_margin ||
-        pt[1]<ui.selection->bbox.top-resize_margin || 
-        pt[1]>ui.selection->bbox.bottom+resize_margin)
-      return FALSE;
-
-    // now, if the click is near the edge, it's a resize operation
-    // keep track of which edges we're close to, since those are the ones which should move
-    ui.selection->resizing_left = (pt[0]<ui.selection->bbox.left+hmargin);
-    ui.selection->resizing_right = (pt[0]>ui.selection->bbox.right-hmargin);
-    ui.selection->resizing_top = (pt[1]<ui.selection->bbox.top+vmargin);
-    ui.selection->resizing_bottom = (pt[1]>ui.selection->bbox.bottom-vmargin);
-
-    // we're not near any edge, give up
-    if (!(ui.selection->resizing_left || ui.selection->resizing_right ||
-          ui.selection->resizing_top  || ui.selection->resizing_bottom)) 
-      return FALSE;
-
-    ui.cur_item_type = ITEM_RESIZESEL;
-    ui.selection->new_y1 = ui.selection->bbox.top;
-    ui.selection->new_y2 = ui.selection->bbox.bottom;
-    ui.selection->new_x1 = ui.selection->bbox.left;
-    ui.selection->new_x2 = ui.selection->bbox.right;
-    gnome_canvas_item_set(ui.selection->canvas_item, "dash", NULL, NULL);
-    update_cursor_for_resize(pt);
-    return TRUE;
-  }
-  return FALSE;
-}
-
-
-void start_vertspace(GdkEvent *event)
-{
-  double pt[2];
-  GList *itemlist;
-  struct Item *item;
-
-  reset_selection();
-  ui.cur_item_type = ITEM_MOVESEL_VERT;
-  ui.selection = g_new(struct Selection, 1);
-  ui.selection->type = ITEM_MOVESEL_VERT;
-  ui.selection->items = NULL;
-  ui.selection->layer = ui.cur_layer;
-
-  get_pointer_coords(event, pt);
-  ui.selection->bbox.top = ui.selection->bbox.bottom = pt[1];
-  for (itemlist = ui.cur_layer->items; itemlist!=NULL; itemlist = itemlist->next) {
-    item = (struct Item *)itemlist->data;
-    if (item->bbox.top >= pt[1]) {
-      ui.selection->items = g_list_append(ui.selection->items, item); 
-      if (item->bbox.bottom > ui.selection->bbox.bottom)
-        ui.selection->bbox.bottom = item->bbox.bottom;
-    }
-  }
-
-  ui.selection->anchor_x = ui.selection->last_x = 0;
-  ui.selection->anchor_y = ui.selection->last_y = pt[1];
-  ui.selection->orig_pageno = ui.pageno;
-  ui.selection->move_pageno = ui.pageno;
-  ui.selection->move_layer = ui.selection->layer;
-  ui.selection->move_pagedelta = 0.;
-  ui.selection->canvas_item = gnome_canvas_item_new(ui.cur_layer->group,
-      gnome_canvas_rect_get_type(), "width-pixels", 1, 
-      "outline-color-rgba", 0x000000ff,
-      "fill-color-rgba", 0x80808040,
-      "x1", -100.0, "x2", ui.cur_page->width+100, "y1", pt[1], "y2", pt[1], NULL);
-  update_cursor();
-}
-
-void continue_movesel(GdkEvent *event)
-{
-  double pt[2], dx, dy, upmargin;
-  GList *list;
-  struct Item *item;
-  int tmppageno;
-  struct Page *tmppage;
-  
-  get_pointer_coords(event, pt);
-  if (ui.cur_item_type == ITEM_MOVESEL_VERT) pt[0] = 0;
-  pt[1] += ui.selection->move_pagedelta;
-
-  // check for page jumps
-  if (ui.cur_item_type == ITEM_MOVESEL_VERT)
-    upmargin = ui.selection->bbox.bottom - ui.selection->bbox.top;
-  else upmargin = VIEW_CONTINUOUS_SKIP;
-  tmppageno = ui.selection->move_pageno;
-  tmppage = g_list_nth_data(journal.pages, tmppageno);
-  while (ui.view_continuous && (pt[1] < - upmargin)) {
-    if (tmppageno == 0) break;
-    tmppageno--;
-    tmppage = g_list_nth_data(journal.pages, tmppageno);
-    pt[1] += tmppage->height + VIEW_CONTINUOUS_SKIP;
-    ui.selection->move_pagedelta += tmppage->height + VIEW_CONTINUOUS_SKIP;
-  }
-  while (ui.view_continuous && (pt[1] > tmppage->height+VIEW_CONTINUOUS_SKIP)) {
-    if (tmppageno == journal.npages-1) break;
-    pt[1] -= tmppage->height + VIEW_CONTINUOUS_SKIP;
-    ui.selection->move_pagedelta -= tmppage->height + VIEW_CONTINUOUS_SKIP;
-    tmppageno++;
-    tmppage = g_list_nth_data(journal.pages, tmppageno);
-  }
-  
-  if (tmppageno != ui.selection->move_pageno) {
-    // move to a new page !
-    ui.selection->move_pageno = tmppageno;
-    if (tmppageno == ui.selection->orig_pageno)
-      ui.selection->move_layer = ui.selection->layer;
-    else
-      ui.selection->move_layer = (struct Layer *)(g_list_last(
-        ((struct Page *)g_list_nth_data(journal.pages, tmppageno))->layers)->data);
-    gnome_canvas_item_reparent(ui.selection->canvas_item, ui.selection->move_layer->group);
-    for (list = ui.selection->items; list!=NULL; list = list->next) {
-      item = (struct Item *)list->data;
-      if (item->canvas_item!=NULL)
-        gnome_canvas_item_reparent(item->canvas_item, ui.selection->move_layer->group);
-    }
-    // avoid a refresh bug
-    gnome_canvas_item_move(GNOME_CANVAS_ITEM(ui.selection->move_layer->group), 0., 0.);
-    if (ui.cur_item_type == ITEM_MOVESEL_VERT)
-      gnome_canvas_item_set(ui.selection->canvas_item,
-        "x2", tmppage->width+100, 
-        "y1", ui.selection->anchor_y+ui.selection->move_pagedelta, NULL);
-  }
-  
-  // now, process things normally
-
-  dx = pt[0] - ui.selection->last_x;
-  dy = pt[1] - ui.selection->last_y;
-  if (hypot(dx,dy) < 1) return; // don't move subpixel
-  ui.selection->last_x = pt[0];
-  ui.selection->last_y = pt[1];
-
-  // move the canvas items
-  if (ui.cur_item_type == ITEM_MOVESEL_VERT)
-    gnome_canvas_item_set(ui.selection->canvas_item, "y2", pt[1], NULL);
-  else 
-    gnome_canvas_item_move(ui.selection->canvas_item, dx, dy);
-  
-  for (list = ui.selection->items; list != NULL; list = list->next) {
-    item = (struct Item *)list->data;
-    if (item->canvas_item != NULL)
-      gnome_canvas_item_move(item->canvas_item, dx, dy);
-  }
-}
-
-void continue_resizesel(GdkEvent *event)
-{
-  double pt[2];
-
-  get_pointer_coords(event, pt);
-
-  if (ui.selection->resizing_top) ui.selection->new_y1 = pt[1];
-  if (ui.selection->resizing_bottom) ui.selection->new_y2 = pt[1];
-  if (ui.selection->resizing_left) ui.selection->new_x1 = pt[0];
-  if (ui.selection->resizing_right) ui.selection->new_x2 = pt[0];
-
-  gnome_canvas_item_set(ui.selection->canvas_item, 
-    "x1", ui.selection->new_x1, "x2", ui.selection->new_x2,
-    "y1", ui.selection->new_y1, "y2", ui.selection->new_y2, NULL);
-}
-
-void finalize_movesel(void)
-{
-  GList *list, *link;
-  
-  if (ui.selection->items != NULL) {
-    prepare_new_undo();
-    undo->type = ITEM_MOVESEL;
-    undo->itemlist = g_list_copy(ui.selection->items);
-    undo->val_x = ui.selection->last_x - ui.selection->anchor_x;
-    undo->val_y = ui.selection->last_y - ui.selection->anchor_y;
-    undo->layer = ui.selection->layer;
-    undo->layer2 = ui.selection->move_layer;
-    undo->auxlist = NULL;
-    // build auxlist = pointers to Item's just before ours (for depths)
-    for (list = ui.selection->items; list!=NULL; list = list->next) {
-      link = g_list_find(ui.selection->layer->items, list->data);
-      if (link!=NULL) link = link->prev;
-      undo->auxlist = g_list_append(undo->auxlist, ((link!=NULL) ? link->data : NULL));
-    }
-    ui.selection->layer = ui.selection->move_layer;
-    move_journal_items_by(undo->itemlist, undo->val_x, undo->val_y,
-                          undo->layer, undo->layer2, 
-                          (undo->layer == undo->layer2)?undo->auxlist:NULL);
-  }
-
-  if (ui.selection->move_pageno!=ui.selection->orig_pageno) 
-    do_switch_page(ui.selection->move_pageno, FALSE, FALSE);
-    
-  if (ui.cur_item_type == ITEM_MOVESEL_VERT)
-    reset_selection();
-  else {
-    ui.selection->bbox.left += undo->val_x;
-    ui.selection->bbox.right += undo->val_x;
-    ui.selection->bbox.top += undo->val_y;
-    ui.selection->bbox.bottom += undo->val_y;
-    make_dashed(ui.selection->canvas_item);
-    /* update selection box object's offset to be trivial, and its internal 
-       coordinates to agree with those of the bbox; need this since resize
-       operations will modify the box by setting its coordinates directly */
-    gnome_canvas_item_affine_absolute(ui.selection->canvas_item, NULL);
-    gnome_canvas_item_set(ui.selection->canvas_item, 
-      "x1", ui.selection->bbox.left, "x2", ui.selection->bbox.right,
-      "y1", ui.selection->bbox.top, "y2", ui.selection->bbox.bottom, NULL);
-  }
-  ui.cur_item_type = ITEM_NONE;
-  update_cursor();
-}
-
-#define SCALING_EPSILON 0.001
-
-void finalize_resizesel(void)
-{
-  struct Item *item;
-
-  // build the affine transformation
-  double offset_x, offset_y, scaling_x, scaling_y;
-  scaling_x = (ui.selection->new_x2 - ui.selection->new_x1) / 
-              (ui.selection->bbox.right - ui.selection->bbox.left);
-  scaling_y = (ui.selection->new_y2 - ui.selection->new_y1) /
-              (ui.selection->bbox.bottom - ui.selection->bbox.top);
-  // couldn't undo a resize-by-zero...
-  if (fabs(scaling_x)<SCALING_EPSILON) scaling_x = SCALING_EPSILON;
-  if (fabs(scaling_y)<SCALING_EPSILON) scaling_y = SCALING_EPSILON;
-  offset_x = ui.selection->new_x1 - ui.selection->bbox.left * scaling_x;
-  offset_y = ui.selection->new_y1 - ui.selection->bbox.top * scaling_y;
-
-  if (ui.selection->items != NULL) {
-    // create the undo information
-    prepare_new_undo();
-    undo->type = ITEM_RESIZESEL;
-    undo->itemlist = g_list_copy(ui.selection->items);
-    undo->auxlist = NULL;
-
-    undo->scaling_x = scaling_x;
-    undo->scaling_y = scaling_y;
-    undo->val_x = offset_x;
-    undo->val_y = offset_y;
-
-    // actually do the resize operation
-    resize_journal_items_by(ui.selection->items, scaling_x, scaling_y, offset_x, offset_y);
-  }
-
-  if (scaling_x>0) {
-    ui.selection->bbox.left = ui.selection->new_x1;
-    ui.selection->bbox.right = ui.selection->new_x2;
-  } else {
-    ui.selection->bbox.left = ui.selection->new_x2;
-    ui.selection->bbox.right = ui.selection->new_x1;
-  }
-  if (scaling_y>0) {
-    ui.selection->bbox.top = ui.selection->new_y1;
-    ui.selection->bbox.bottom = ui.selection->new_y2;
-  } else {
-    ui.selection->bbox.top = ui.selection->new_y2;
-    ui.selection->bbox.bottom = ui.selection->new_y1;
-  }
-  make_dashed(ui.selection->canvas_item);
-
-  ui.cur_item_type = ITEM_NONE;
-  update_cursor();
-}
-
-void selection_delete(void)
-{
-  struct UndoErasureData *erasure;
-  GList *itemlist;
-  struct Item *item;
-  
-  if (ui.selection == NULL) return;
-  prepare_new_undo();
-  undo->type = ITEM_ERASURE;
-  undo->layer = ui.selection->layer;
-  undo->erasurelist = NULL;
-  for (itemlist = ui.selection->items; itemlist!=NULL; itemlist = itemlist->next) {
-    item = (struct Item *)itemlist->data;
-    if (item->canvas_item!=NULL)
-      gtk_object_destroy(GTK_OBJECT(item->canvas_item));
-    erasure = g_new(struct UndoErasureData, 1);
-    erasure->item = item;
-    erasure->npos = g_list_index(ui.selection->layer->items, item);
-    erasure->nrepl = 0;
-    erasure->replacement_items = NULL;
-    ui.selection->layer->items = g_list_remove(ui.selection->layer->items, item);
-    ui.selection->layer->nitems--;
-    undo->erasurelist = g_list_prepend(undo->erasurelist, erasure);
-  }
-  reset_selection();
-
-  /* NOTE: the erasurelist is built backwards; this guarantees that,
-     upon undo, the erasure->npos fields give the correct position
-     where each item should be reinserted as the list is traversed in
-     the forward direction */
-}
-
-void callback_clipboard_get(GtkClipboard *clipboard,
-                            GtkSelectionData *selection_data,
-                            guint info, gpointer user_data)
-{
-  int length;
-  
-  g_memmove(&length, user_data, sizeof(int));
-  gtk_selection_data_set(selection_data,
-     gdk_atom_intern("_XOURNAL", FALSE), 8, user_data, length);
-}
-
-void callback_clipboard_clear(GtkClipboard *clipboard, gpointer user_data)
-{
-  g_free(user_data);
-}
-
-void selection_to_clip(void)
-{
-  int bufsz, nitems, val;
-  char *buf, *p;
-  GList *list;
-  struct Item *item;
-  GtkTargetEntry target;
-  
-  if (ui.selection == NULL) return;
-  bufsz = 2*sizeof(int) // bufsz, nitems
-        + sizeof(struct BBox); // bbox
-  nitems = 0;
-  for (list = ui.selection->items; list != NULL; list = list->next) {
-    item = (struct Item *)list->data;
-    nitems++;
-    if (item->type == ITEM_STROKE) {
-      bufsz+= sizeof(int) // type
-            + sizeof(struct Brush) // brush
-            + sizeof(int) // num_points
-            + 2*item->path->num_points*sizeof(double); // the points
-      if (item->brush.variable_width)
-        bufsz += (item->path->num_points-1)*sizeof(double); // the widths
-    }
-    else if (item->type == ITEM_TEXT) {
-      bufsz+= sizeof(int) // type
-            + sizeof(struct Brush) // brush
-            + 2*sizeof(double) // bbox upper-left
-            + sizeof(int) // text len
-            + strlen(item->text)+1 // text
-            + sizeof(int) // font_name len
-            + strlen(item->font_name)+1 // font_name
-            + sizeof(double); // font_size
-    }
-    else bufsz+= sizeof(int); // type
-  }
-  p = buf = g_malloc(bufsz);
-  g_memmove(p, &bufsz, sizeof(int)); p+= sizeof(int);
-  g_memmove(p, &nitems, sizeof(int)); p+= sizeof(int);
-  g_memmove(p, &ui.selection->bbox, sizeof(struct BBox)); p+= sizeof(struct BBox);
-  for (list = ui.selection->items; list != NULL; list = list->next) {
-    item = (struct Item *)list->data;
-    g_memmove(p, &item->type, sizeof(int)); p+= sizeof(int);
-    if (item->type == ITEM_STROKE) {
-      g_memmove(p, &item->brush, sizeof(struct Brush)); p+= sizeof(struct Brush);
-      g_memmove(p, &item->path->num_points, sizeof(int)); p+= sizeof(int);
-      g_memmove(p, item->path->coords, 2*item->path->num_points*sizeof(double));
-      p+= 2*item->path->num_points*sizeof(double);
-      if (item->brush.variable_width) {
-        g_memmove(p, item->widths, (item->path->num_points-1)*sizeof(double));
-        p+= (item->path->num_points-1)*sizeof(double);
-      }
-    }
-    if (item->type == ITEM_TEXT) {
-      g_memmove(p, &item->brush, sizeof(struct Brush)); p+= sizeof(struct Brush);
-      g_memmove(p, &item->bbox.left, sizeof(double)); p+= sizeof(double);
-      g_memmove(p, &item->bbox.top, sizeof(double)); p+= sizeof(double);
-      val = strlen(item->text);
-      g_memmove(p, &val, sizeof(int)); p+= sizeof(int);
-      g_memmove(p, item->text, val+1); p+= val+1;
-      val = strlen(item->font_name);
-      g_memmove(p, &val, sizeof(int)); p+= sizeof(int);
-      g_memmove(p, item->font_name, val+1); p+= val+1;
-      g_memmove(p, &item->font_size, sizeof(double)); p+= sizeof(double);
-    }
-  }
-  
-  target.target = "_XOURNAL";
-  target.flags = 0;
-  target.info = 0;
-  
-  gtk_clipboard_set_with_data(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), 
-       &target, 1,
-       callback_clipboard_get, callback_clipboard_clear, buf);
-}
-
-
-void clipboard_paste(void)
-{
-  GtkSelectionData *sel_data;
-  unsigned char *p;
-  int nitems, npts, i, len;
-  struct Item *item;
-  double hoffset, voffset, cx, cy;
-  double *pf;
-  int sx, sy, wx, wy;
-  
-  if (ui.cur_layer == NULL) return;
-  
-  ui.cur_item_type = ITEM_PASTE;
-  sel_data = gtk_clipboard_wait_for_contents(
-      gtk_clipboard_get(GDK_SELECTION_CLIPBOARD),
-      gdk_atom_intern("_XOURNAL", FALSE));
-  ui.cur_item_type = ITEM_NONE;
-  if (sel_data == NULL) return; // paste failed
-  
-  reset_selection();
-  
-  ui.selection = g_new(struct Selection, 1);
-  p = sel_data->data + sizeof(int);
-  g_memmove(&nitems, p, sizeof(int)); p+= sizeof(int);
-  ui.selection->type = ITEM_SELECTRECT;
-  ui.selection->layer = ui.cur_layer;
-  g_memmove(&ui.selection->bbox, p, sizeof(struct BBox)); p+= sizeof(struct BBox);
-  ui.selection->items = NULL;
-  
-  // find by how much we translate the pasted selection
-  gnome_canvas_get_scroll_offsets(canvas, &sx, &sy);
-  gdk_window_get_geometry(GTK_WIDGET(canvas)->window, NULL, NULL, &wx, &wy, NULL);
-  gnome_canvas_window_to_world(canvas, sx + wx/2, sy + wy/2, &cx, &cy);
-  cx -= ui.cur_page->hoffset;
-  cy -= ui.cur_page->voffset;
-  if (cx + (ui.selection->bbox.right-ui.selection->bbox.left)/2 > ui.cur_page->width)
-    cx = ui.cur_page->width - (ui.selection->bbox.right-ui.selection->bbox.left)/2;
-  if (cx - (ui.selection->bbox.right-ui.selection->bbox.left)/2 < 0)
-    cx = (ui.selection->bbox.right-ui.selection->bbox.left)/2;
-  if (cy + (ui.selection->bbox.bottom-ui.selection->bbox.top)/2 > ui.cur_page->height)
-    cy = ui.cur_page->height - (ui.selection->bbox.bottom-ui.selection->bbox.top)/2;
-  if (cy - (ui.selection->bbox.bottom-ui.selection->bbox.top)/2 < 0)
-    cy = (ui.selection->bbox.bottom-ui.selection->bbox.top)/2;
-  hoffset = cx - (ui.selection->bbox.right+ui.selection->bbox.left)/2;
-  voffset = cy - (ui.selection->bbox.top+ui.selection->bbox.bottom)/2;
-  ui.selection->bbox.left += hoffset;
-  ui.selection->bbox.right += hoffset;
-  ui.selection->bbox.top += voffset;
-  ui.selection->bbox.bottom += voffset;
-
-  ui.selection->canvas_item = gnome_canvas_item_new(ui.cur_layer->group,
-      gnome_canvas_rect_get_type(), "width-pixels", 1,
-      "outline-color-rgba", 0x000000ff,
-      "fill-color-rgba", 0x80808040,
-      "x1", ui.selection->bbox.left, "x2", ui.selection->bbox.right, 
-      "y1", ui.selection->bbox.top, "y2", ui.selection->bbox.bottom, NULL);
-  make_dashed(ui.selection->canvas_item);
-
-  while (nitems-- > 0) {
-    item = g_new(struct Item, 1);
-    ui.selection->items = g_list_append(ui.selection->items, item);
-    ui.cur_layer->items = g_list_append(ui.cur_layer->items, item);
-    ui.cur_layer->nitems++;
-    g_memmove(&item->type, p, sizeof(int)); p+= sizeof(int);
-    if (item->type == ITEM_STROKE) {
-      g_memmove(&item->brush, p, sizeof(struct Brush)); p+= sizeof(struct Brush);
-      g_memmove(&npts, p, sizeof(int)); p+= sizeof(int);
-      item->path = gnome_canvas_points_new(npts);
-      pf = (double *)p;
-      for (i=0; i<npts; i++) {
-        item->path->coords[2*i] = pf[2*i] + hoffset;
-        item->path->coords[2*i+1] = pf[2*i+1] + voffset;
-      }
-      p+= 2*item->path->num_points*sizeof(double);
-      if (item->brush.variable_width) {
-        item->widths = g_memdup(p, (item->path->num_points-1)*sizeof(double));
-        p+= (item->path->num_points-1)*sizeof(double);
-      }
-      else item->widths = NULL;
-      update_item_bbox(item);
-      make_canvas_item_one(ui.cur_layer->group, item);
-    }
-    if (item->type == ITEM_TEXT) {
-      g_memmove(&item->brush, p, sizeof(struct Brush)); p+= sizeof(struct Brush);
-      g_memmove(&item->bbox.left, p, sizeof(double)); p+= sizeof(double);
-      g_memmove(&item->bbox.top, p, sizeof(double)); p+= sizeof(double);
-      item->bbox.left += hoffset;
-      item->bbox.top += voffset;
-      g_memmove(&len, p, sizeof(int)); p+= sizeof(int);
-      item->text = g_malloc(len+1);
-      g_memmove(item->text, p, len+1); p+= len+1;
-      g_memmove(&len, p, sizeof(int)); p+= sizeof(int);
-      item->font_name = g_malloc(len+1);
-      g_memmove(item->font_name, p, len+1); p+= len+1;
-      g_memmove(&item->font_size, p, sizeof(double)); p+= sizeof(double);
-      make_canvas_item_one(ui.cur_layer->group, item);
-    }
-  }
-
-  prepare_new_undo();
-  undo->type = ITEM_PASTE;
-  undo->layer = ui.cur_layer;
-  undo->itemlist = g_list_copy(ui.selection->items);  
-  
-  gtk_selection_data_free(sel_data);
-  update_copy_paste_enabled();
-  update_color_menu();
-  update_thickness_buttons();
-  update_color_buttons();
-  update_font_button();  
-  update_cursor(); // FIXME: can't know if pointer is within selection!
-}
-
-// modify the color or thickness of pen strokes in a selection
-
-void recolor_selection(int color_no, guint color_rgba)
-{
-  GList *itemlist;
-  struct Item *item;
-  struct Brush *brush;
-  GnomeCanvasGroup *group;
-  
-  if (ui.selection == NULL) return;
-  prepare_new_undo();
-  undo->type = ITEM_REPAINTSEL;
-  undo->itemlist = NULL;
-  undo->auxlist = NULL;
-  for (itemlist = ui.selection->items; itemlist!=NULL; itemlist = itemlist->next) {
-    item = (struct Item *)itemlist->data;
-    if (item->type != ITEM_STROKE && item->type != ITEM_TEXT) continue;
-    if (item->type == ITEM_STROKE && item->brush.tool_type!=TOOL_PEN) continue;
-    // store info for undo
-    undo->itemlist = g_list_append(undo->itemlist, item);
-    brush = (struct Brush *)g_malloc(sizeof(struct Brush));
-    g_memmove(brush, &(item->brush), sizeof(struct Brush));
-    undo->auxlist = g_list_append(undo->auxlist, brush);
-    // repaint the stroke
-    item->brush.color_no = color_no;
-    item->brush.color_rgba = color_rgba | 0xff; // no alpha
-    if (item->canvas_item!=NULL) {
-      if (!item->brush.variable_width)
-        gnome_canvas_item_set(item->canvas_item, 
-           "fill-color-rgba", item->brush.color_rgba, NULL);
-      else {
-        group = (GnomeCanvasGroup *) item->canvas_item->parent;
-        gtk_object_destroy(GTK_OBJECT(item->canvas_item));
-        make_canvas_item_one(group, item);
-      }
-    }
-  }
-}
-
-void rethicken_selection(int val)
-{
-  GList *itemlist;
-  struct Item *item;
-  struct Brush *brush;
-  GnomeCanvasGroup *group;
-  
-  if (ui.selection == NULL) return;
-  prepare_new_undo();
-  undo->type = ITEM_REPAINTSEL;
-  undo->itemlist = NULL;
-  undo->auxlist = NULL;
-  for (itemlist = ui.selection->items; itemlist!=NULL; itemlist = itemlist->next) {
-    item = (struct Item *)itemlist->data;
-    if (item->type != ITEM_STROKE || item->brush.tool_type!=TOOL_PEN) continue;
-    // store info for undo
-    undo->itemlist = g_list_append(undo->itemlist, item);
-    brush = (struct Brush *)g_malloc(sizeof(struct Brush));
-    g_memmove(brush, &(item->brush), sizeof(struct Brush));
-    undo->auxlist = g_list_append(undo->auxlist, brush);
-    // repaint the stroke
-    item->brush.thickness_no = val;
-    item->brush.thickness = predef_thickness[TOOL_PEN][val];
-    if (item->canvas_item!=NULL) {
-      if (!item->brush.variable_width)
-        gnome_canvas_item_set(item->canvas_item, 
-           "width-units", item->brush.thickness, NULL);
-      else {
-        group = (GnomeCanvasGroup *) item->canvas_item->parent;
-        gtk_object_destroy(GTK_OBJECT(item->canvas_item));
-        item->brush.variable_width = FALSE;
-        make_canvas_item_one(group, item);
-      }
-    }
-  }
-}
 
 gboolean do_hand_scrollto(gpointer data)
 {
@@ -1442,6 +710,22 @@ struct Item *click_is_in_text(struct Layer *layer, double x, double y)
   for (itemlist = layer->items; itemlist!=NULL; itemlist = itemlist->next) {
     item = (struct Item *)itemlist->data;
     if (item->type != ITEM_TEXT) continue;
+    if (x<item->bbox.left || x>item->bbox.right) continue;
+    if (y<item->bbox.top || y>item->bbox.bottom) continue;
+    val = item;
+  }
+  return val;
+}
+
+struct Item *click_is_in_text_or_image(struct Layer *layer, double x, double y)
+{
+  GList *itemlist;
+  struct Item *item, *val;
+  
+  val = NULL;
+  for (itemlist = layer->items; itemlist!=NULL; itemlist = itemlist->next) {
+    item = (struct Item *)itemlist->data;
+    if (item->type != ITEM_TEXT && item->type != ITEM_IMAGE) continue;
     if (x<item->bbox.left || x>item->bbox.right) continue;
     if (y<item->bbox.top || y>item->bbox.bottom) continue;
     val = item;

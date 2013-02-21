@@ -12,7 +12,7 @@ List of features to be implemented (not in any particular order)
 - cleanup of undo history (keep track of refcounts, delete old undo)
   save-and-clear-undo ?
 
-- RandR / recalibration awareness?
+- RandR / recalibration awareness? - NOT NEEDED ANYMORE?
   (e.g. if xinput events are far away from core events, re-query geometry?)
    or see if removing the GTK bugfix would help? -- e.g. by recalling an
    internal gtk init function?
@@ -20,16 +20,25 @@ List of features to be implemented (not in any particular order)
   xournal). (cf #2944459). Recalibration probably requires talking directly 
   to X server to query input device geometry and compensate for GTK.
 
+
+- image patch related:
+  - paste and selresize don't put rectangle at top
+  - need option for image mode to revert to previous tool?
+  - optimize storage of embedded images by detecting duplicates (D. German)
+
 BUGS:
-** lingering issues with synaptics touchpads? (#2872667)
+- lingering issues with synaptics touchpads? (#2872667)
  (todo) - set device to Absolute mode at startup? (GDK doesn't expose API,
           cf XSetDeviceMode() in /usr/include/X11/extensions/XInput.h)
-** color picker into canvas doesn't work in GTK+ 2.16 (should disable
+- color picker into canvas doesn't work in GTK+ 2.16 (should disable
    xinput first?)
-** export to PDF should see cropbox size if smaller, and map the
+- export to PDF should see cropbox size if smaller, and map the
    cropbox -- not the entire page -- to the page area! (2009-11-18 forum)
 
-*** filter out very large coords when loading, not just infinity
+BEHAVIOR TODO:
+- option to have "Save Prefs" save current brushes as settings, not defaults
+- method to map more general devices to specific tools or to Ignore
+  (e.g.: X220T ignore trackpoint; map touchscreen to Hand, eraser to Eraser)
 
 WIN32:
 - test further
@@ -37,16 +46,21 @@ WIN32:
 - bug: opening files with accents in name?
 - bug: cairo-scaled-font in printing? (2009-11-18 bug tracker)
 - bug: printf() sometimes generates stroke coordinates 1.#J -1.#J  (???)
+     (filter out inf, -inf, nan, very large values when saving ???)
 
 PATCHES TO INCORPORATE:
 
-* filter out very large coords when loading, not just infinity; also filter
-  out 1.#J's
+- ezyang e-mail of 11/28/2011: patches in Ubuntu to fix PDF showing up?
+http://archive.ubuntu.com/ubuntu/pool/universe/x/xournal/xournal_0.4.5-3.debian.tar.gz
+actually not necessary anymore? (ezyang 12/2/2011)
+
+- tauu e-mail of 12/1/2011: 8 small patches for win32, uploaded on tracker
+https://sourceforge.net/tracker/index.php?func=detail&aid=3447356&group_id=163434&atid=827735
 
 - patch: add Alt-Up/Dn accelerators for show/hide layer. See
   show_hide_layer.patch
 
-***** my own patch noresize_background_v1.patch  (also in xournal-working/)
+* my own patch noresize_background_v1.patch  (also in xournal-working/)
 
 ** patch: ortho/snap (revised Apr 13 2009)
    xournal_ortho_snap_patch_4 (by Josef Pavlicek)
@@ -62,11 +76,6 @@ PATCHES TO INCORPORATE:
    NB: last modif should be triggered by prepare_new_undo() and undo/redo?
    *** NEW VERSION: with threading, by Man, e-mail 12/10/2009 10:51pm
 
-** insert images patch (Victor Saase) #2890925
-** as improved by Simon Guest April 14 2010
-** modified rev2 May 14, 2010: xournal-0.4.5-sjg-image-rev2.patch.gz 
-** rev6 by now...
-
 ** customize paper ruling (Gautam Iyer e-mail Nov 30 2009 / SF tracker)
 
 ** cairo export to PNG (Man = Paulo Neves, e-mail Feb 3 '10, saved as
@@ -77,8 +86,6 @@ PATCHES TO INCORPORATE:
   shortcut to increase/decrease text font size by 1 point (?) - acts just
   as if one had clicked font sel box and resized (affects sel text + cur font)
 
-- make default in ok_to_close() box "cancel" rather than "no".
-
 - make line spacing in text objects customizable: to a fixed scaling factor,
   a fixed number of units, or the paper ruling (esp. the latter!!)
 
@@ -88,7 +95,6 @@ PATCHES TO INCORPORATE:
   to have a different size from the page itself.
 
 - option to map device named "touch" to hand tool? (like "Eraser tip")
-
 
 - roadmap towards SVG support: see 1/25/2010 Mark Edgington email & reply
   (1) export to SVG (using pages and groups for pages and layers; 
@@ -149,10 +155,9 @@ PATCHES TO INCORPORATE:
 - proximity detection: eraser proximity switches mapping? 
   proximity out removes cursor until next motionnotify?
 
-
 - render page to bitmap: for export, preview, and copy-paste
     (render using libart, see how gnomecanvas does it?)
-    NO: render using Cairo !!! then can switch to GtkPrint as well.
+    NO: render using Cairo !!!
     (copy-paste: config option to render only current layer or all below?)
 - cut-and-paste of selection into other apps (as bitmap; as SVG?)
 
@@ -183,10 +188,6 @@ PATCHES TO INCORPORATE:
 - add config option to limit total memory usage for PDF bitmaps
 - ability to select entire page for copy-paste (as bitmap / reorder xournal)
 - copy/paste of an entire page (beware if PDF bg is not compatible!)
-- rewrite printing using GtkPrint + Cairo as GnomePrint replacement
-   (keep GnomePrint option for compatibility with GTK+ <2.10)
-- insert images (screen capture or from file or from clipboard), 
-  not as full-page backgrounds (new ITEM type)
 
 - convert to/from Jarnal format; to/from MS Journal format???
 - export as SVG, as bitmap (use Cairo for this)

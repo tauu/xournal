@@ -1,3 +1,18 @@
+/*
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *
+ *  This software is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of  
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #ifdef HAVE_CONFIG_H
 #  include <config.h>
 #endif
@@ -16,6 +31,7 @@
 #include "xo-file.h"
 #include "xo-paint.h"
 #include "xo-shapes.h"
+#include "xo-image.h"
 
 // some global constants
 
@@ -49,7 +65,7 @@ struct Page *new_page(struct Page *template)
   pg->bg = (struct Background *)g_memdup(template->bg, sizeof(struct Background));
   pg->bg->canvas_item = NULL;
   if (pg->bg->type == BG_PIXMAP || pg->bg->type == BG_PDF) {
-    gdk_pixbuf_ref(pg->bg->pixbuf);
+    g_object_ref(pg->bg->pixbuf);
     refstring_ref(pg->bg->filename);
   }
   pg->group = (GnomeCanvasGroup *) gnome_canvas_item_new(
@@ -87,6 +103,31 @@ struct Page *new_page_with_bg(struct Background *bg, double width, double height
       pg->group, gnome_canvas_group_get_type(), NULL);
   
   return pg;
+}
+
+// change the current page if necessary for pointer at pt
+void set_current_page(gdouble *pt)
+{
+  gboolean page_change;
+  struct Page *tmppage;
+
+  page_change = FALSE;
+  tmppage = ui.cur_page;
+  while (ui.view_continuous && (pt[1] < - VIEW_CONTINUOUS_SKIP)) {
+    if (ui.pageno == 0) break;
+    page_change = TRUE;
+    ui.pageno--;
+    tmppage = g_list_nth_data(journal.pages, ui.pageno);
+    pt[1] += tmppage->height + VIEW_CONTINUOUS_SKIP;
+  }
+  while (ui.view_continuous && (pt[1] > tmppage->height + VIEW_CONTINUOUS_SKIP)) {
+    if (ui.pageno == journal.npages-1) break;
+    pt[1] -= tmppage->height + VIEW_CONTINUOUS_SKIP;
+    page_change = TRUE;
+    ui.pageno++;
+    tmppage = g_list_nth_data(journal.pages, ui.pageno);
+  }
+  if (page_change) do_switch_page(ui.pageno, FALSE, FALSE);
 }
 
 void realloc_cur_path(int n)
@@ -141,6 +182,11 @@ void clear_redo_stack(void)
       g_free(redo->item->font_name);
       g_free(redo->item);
     }
+    else if (redo->type == ITEM_IMAGE) {
+      g_object_unref(redo->item->image);
+      g_free(redo->item->image_png);
+      g_free(redo->item);
+    }
     else if (redo->type == ITEM_ERASURE || redo->type == ITEM_RECOGNIZER) {
       for (list = redo->erasurelist; list!=NULL; list=list->next) {
         erasure = (struct UndoErasureData *)list->data;
@@ -158,7 +204,7 @@ void clear_redo_stack(void)
     else if (redo->type == ITEM_NEW_BG_ONE || redo->type == ITEM_NEW_BG_RESIZE
           || redo->type == ITEM_NEW_DEFAULT_BG) {
       if (redo->bg->type == BG_PIXMAP || redo->bg->type == BG_PDF) {
-        if (redo->bg->pixbuf!=NULL) gdk_pixbuf_unref(redo->bg->pixbuf);
+        if (redo->bg->pixbuf!=NULL) g_object_unref(redo->bg->pixbuf);
         refstring_unref(redo->bg->filename);
       }
       g_free(redo->bg);
@@ -217,6 +263,10 @@ void clear_undo_stack(void)
         }
         if (erasure->item->type == ITEM_TEXT)
           { g_free(erasure->item->text); g_free(erasure->item->font_name); }
+        if (erasure->item->type == ITEM_IMAGE) {
+          g_object_unref(erasure->item->image);
+          g_free(erasure->item->image_png);
+        }
         g_free(erasure->item);
         g_list_free(erasure->replacement_items);
         g_free(erasure);
@@ -226,7 +276,7 @@ void clear_undo_stack(void)
     else if (undo->type == ITEM_NEW_BG_ONE || undo->type == ITEM_NEW_BG_RESIZE
           || undo->type == ITEM_NEW_DEFAULT_BG) {
       if (undo->bg->type == BG_PIXMAP || undo->bg->type == BG_PDF) {
-        if (undo->bg->pixbuf!=NULL) gdk_pixbuf_unref(undo->bg->pixbuf);
+        if (undo->bg->pixbuf!=NULL) g_object_unref(undo->bg->pixbuf);
         refstring_unref(undo->bg->filename);
       }
       g_free(undo->bg);
@@ -283,7 +333,7 @@ void delete_page(struct Page *pg)
   if (pg->group!=NULL) gtk_object_destroy(GTK_OBJECT(pg->group));
               // this also destroys the background's canvas items
   if (pg->bg->type == BG_PIXMAP || pg->bg->type == BG_PDF) {
-    if (pg->bg->pixbuf != NULL) gdk_pixbuf_unref(pg->bg->pixbuf);
+    if (pg->bg->pixbuf != NULL) g_object_unref(pg->bg->pixbuf);
     if (pg->bg->filename != NULL) refstring_unref(pg->bg->filename);
   }
   g_free(pg->bg);
@@ -300,6 +350,10 @@ void delete_layer(struct Layer *l)
       gnome_canvas_points_free(item->path);
     if (item->type == ITEM_TEXT) {
       g_free(item->font_name); g_free(item->text);
+    }
+    if (item->type == ITEM_IMAGE) {
+      g_object_unref(item->image);
+      g_free(item->image_png);
     }
     // don't need to delete the canvas_item, as it's part of the group destroyed below
     g_free(item);
@@ -340,11 +394,28 @@ void refstring_unref(struct Refstring *rs)
 
 // some helper functions
 
+int finite_sized(double x) // detect unrealistic coordinate values
+{
+  return (finite(x) && x<1E6 && x>-1E6);
+}
+
+
 void get_pointer_coords(GdkEvent *event, gdouble *ret)
 {
   double x, y;
   gdk_event_get_coords(event, &x, &y);
   gnome_canvas_window_to_world(canvas, x, y, ret, ret+1);
+  ret[0] -= ui.cur_page->hoffset;
+  ret[1] -= ui.cur_page->voffset;
+}
+
+void get_current_pointer_coords(gdouble *ret)
+{
+  gint wx, wy, sx, sy;
+
+  gtk_widget_get_pointer((GtkWidget *)canvas, &wx, &wy);
+  gnome_canvas_get_scroll_offsets(canvas, &sx, &sy);
+  gnome_canvas_window_to_world(canvas, (double)(wx + sx), (double)(wy + sy), ret, ret+1);
   ret[0] -= ui.cur_page->hoffset;
   ret[1] -= ui.cur_page->voffset;
 }
@@ -373,7 +444,7 @@ void fix_xinput_coords(GdkEvent *event)
 
 #ifdef ENABLE_XINPUT_BUGFIX
   // fix broken events with the core pointer's location
-  if (!finite(axes[0]) || !finite(axes[1]) || (axes[0]==0. && axes[1]==0.)) {
+  if (!finite_sized(axes[0]) || !finite_sized(axes[1]) || axes[0]==0. || axes[1]==0.) {
     gdk_window_get_pointer(GTK_WIDGET(canvas)->window, &ix, &iy, NULL);
     *px = ix + sx; 
     *py = iy + sy;
@@ -403,7 +474,7 @@ void fix_xinput_coords(GdkEvent *event)
 
   }
 #else
-  if (!finite(*px) || !finite(*py) || (*px==0. && *py==0.)) {
+  if (!finite_sized(*px) || !finite_sized(*py) || *px==0. || *py==0.) {
     gdk_window_get_pointer(GTK_WIDGET(canvas)->window, &ix, &iy, NULL);
     *px = ix + sx; 
     *py = iy + sy;
@@ -445,7 +516,7 @@ double get_pressure_multiplier(GdkEvent *event)
       || device->num_axes <= 2) return 1.0;
 
   rawpressure = axes[2]/(device->axes[2].max - device->axes[2].min);
-  if (!finite(rawpressure)) return 1.0;
+  if (!finite_sized(rawpressure)) return 1.0;
 
   return ((1-rawpressure)*ui.width_minimum_multiplier + rawpressure*ui.width_maximum_multiplier);
 }
@@ -526,6 +597,16 @@ void make_canvas_item_one(GnomeCanvasGroup *group, struct Item *item)
           "font-desc", font_desc, "fill-color-rgba", item->brush.color_rgba,
           "text", item->text, NULL);
     update_item_bbox(item);
+  }
+  if (item->type == ITEM_IMAGE) {
+    item->canvas_item = gnome_canvas_item_new(group,
+          gnome_canvas_pixbuf_get_type(),
+          "pixbuf", item->image,
+          "x", item->bbox.left, "y", item->bbox.top,
+          "width", item->bbox.right - item->bbox.left,
+          "height", item->bbox.bottom - item->bbox.top,
+          "width-set", TRUE, "height-set", TRUE,
+          NULL);
   }
 }
 
@@ -875,6 +956,10 @@ void update_tool_buttons(void)
       gtk_toggle_tool_button_set_active(
         GTK_TOGGLE_TOOL_BUTTON(GET_COMPONENT("buttonText")), TRUE);
       break;
+    case TOOL_IMAGE:
+      gtk_toggle_tool_button_set_active(
+        GTK_TOGGLE_TOOL_BUTTON(GET_COMPONENT("buttonImage")), TRUE);
+      break;
     case TOOL_SELECTREGION:
       gtk_toggle_tool_button_set_active(
         GTK_TOGGLE_TOOL_BUTTON(GET_COMPONENT("buttonSelectRegion")), TRUE);
@@ -922,6 +1007,10 @@ void update_tool_menu(void)
     case TOOL_TEXT:
       gtk_check_menu_item_set_active(
         GTK_CHECK_MENU_ITEM(GET_COMPONENT("toolsText")), TRUE);
+      break;
+    case TOOL_IMAGE:
+      gtk_check_menu_item_set_active(
+        GTK_CHECK_MENU_ITEM(GET_COMPONENT("toolsImage")), TRUE);
       break;
     case TOOL_SELECTREGION:
       gtk_check_menu_item_set_active(
@@ -1153,6 +1242,10 @@ void update_mappings_menu(void)
       gtk_check_menu_item_set_active(
         GTK_CHECK_MENU_ITEM(GET_COMPONENT("button2Text")), TRUE);
       break;
+    case TOOL_IMAGE:
+      gtk_check_menu_item_set_active(
+        GTK_CHECK_MENU_ITEM(GET_COMPONENT("button2Image")), TRUE);
+      break;
     case TOOL_SELECTREGION:
       gtk_check_menu_item_set_active(
         GTK_CHECK_MENU_ITEM(GET_COMPONENT("button2SelectRegion")), TRUE);
@@ -1182,6 +1275,10 @@ void update_mappings_menu(void)
     case TOOL_TEXT:
       gtk_check_menu_item_set_active(
         GTK_CHECK_MENU_ITEM(GET_COMPONENT("button3Text")), TRUE);
+      break;
+    case TOOL_IMAGE:
+      gtk_check_menu_item_set_active(
+        GTK_CHECK_MENU_ITEM(GET_COMPONENT("button3Image")), TRUE);
       break;
     case TOOL_SELECTREGION:
       gtk_check_menu_item_set_active(
@@ -1667,6 +1764,10 @@ void process_paperstyle_activate(GtkMenuItem *menuitem, int style)
   if (must_upd) update_page_stuff();
 }
 
+#ifndef GTK_STOCK_DISCARD
+#define GTK_STOCK_DISCARD GTK_STOCK_NO
+#endif
+
 gboolean ok_to_close(void)
 {
   GtkWidget *dialog;
@@ -1733,7 +1834,8 @@ void move_journal_items_by(GList *itemlist, double dx, double dy,
     if (item->type == ITEM_STROKE)
       for (pt=item->path->coords, i=0; i<item->path->num_points; i++, pt+=2)
         { pt[0] += dx; pt[1] += dy; }
-    if (item->type == ITEM_STROKE || item->type == ITEM_TEXT || item->type == ITEM_TEMP_TEXT) {
+    if (item->type == ITEM_STROKE || item->type == ITEM_TEXT || 
+        item->type == ITEM_TEMP_TEXT || item->type == ITEM_IMAGE) {
       item->bbox.left += dx;
       item->bbox.right += dx;
       item->bbox.top += dy;
@@ -1815,6 +1917,22 @@ void resize_journal_items_by(GList *itemlist, double scaling_x, double scaling_y
       item->font_size *= mean_scaling;
       item->bbox.left = item->bbox.left*scaling_x + offset_x;
       item->bbox.top = item->bbox.top*scaling_y + offset_y;
+    }
+    if (item->type == ITEM_IMAGE) {
+      item->bbox.left = item->bbox.left*scaling_x + offset_x;
+      item->bbox.right = item->bbox.right*scaling_x + offset_x;
+      item->bbox.top = item->bbox.top*scaling_y + offset_y;
+      item->bbox.bottom = item->bbox.bottom*scaling_y + offset_y;
+      if (item->bbox.left > item->bbox.right) {
+        temp = item->bbox.left;
+        item->bbox.left = item->bbox.right;
+        item->bbox.right = temp;
+      }
+      if (item->bbox.top > item->bbox.bottom) {
+        temp = item->bbox.top;
+        item->bbox.top = item->bbox.bottom;
+        item->bbox.bottom = temp;
+      }
     }
     // redraw the item
     if (item->canvas_item!=NULL) {
@@ -1979,8 +2097,8 @@ void allow_all_accels(void)
       "can-activate-accel", G_CALLBACK(can_accel), NULL);
   g_signal_connect((gpointer) GET_COMPONENT("toolsText"),
       "can-activate-accel", G_CALLBACK(can_accel), NULL);
-/*  g_signal_connect((gpointer) GET_COMPONENT("toolsSelectRegion"),
-      "can-activate-accel", G_CALLBACK(can_accel), NULL);  */
+  g_signal_connect((gpointer) GET_COMPONENT("toolsSelectRegion"),
+      "can-activate-accel", G_CALLBACK(can_accel), NULL);
   g_signal_connect((gpointer) GET_COMPONENT("toolsSelectRectangle"),
       "can-activate-accel", G_CALLBACK(can_accel), NULL);
   g_signal_connect((gpointer) GET_COMPONENT("toolsVerticalSpace"),
@@ -2042,10 +2160,6 @@ void hide_unimplemented(void)
 {
   gtk_widget_hide(GET_COMPONENT("filePrintOptions"));
   gtk_widget_hide(GET_COMPONENT("journalFlatten"));  
-  gtk_widget_hide(GET_COMPONENT("toolsSelectRegion"));
-  gtk_widget_hide(GET_COMPONENT("buttonSelectRegion"));
-  gtk_widget_hide(GET_COMPONENT("button2SelectRegion"));
-  gtk_widget_hide(GET_COMPONENT("button3SelectRegion"));
   gtk_widget_hide(GET_COMPONENT("helpIndex")); 
 
   /* config file only works with glib 2.6 and beyond */

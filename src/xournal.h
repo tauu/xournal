@@ -1,3 +1,18 @@
+/*
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *
+ *  This software is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of  
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <gtk/gtk.h>
 #include <libgnomecanvas/libgnomecanvas.h>
 #include <poppler/glib/poppler.h>
@@ -144,8 +159,9 @@ extern guint predef_bgcolors_rgba[COLOR_MAX];
 #define TOOL_SELECTRECT   5
 #define TOOL_VERTSPACE    6
 #define TOOL_HAND         7
+#define TOOL_IMAGE        8
 #define NUM_STROKE_TOOLS  3
-#define NUM_TOOLS         8
+#define NUM_TOOLS         9
 #define NUM_BUTTONS       3
 
 #define TOOLOPT_ERASER_STANDARD     0
@@ -174,6 +190,10 @@ typedef struct Item {
   gchar *font_name;
   gdouble font_size;
   GtkWidget *widget; // the widget while text is being edited (ITEM_TEMP_TEXT)
+  // the following fields for ITEM_IMAGE:
+  GdkPixbuf *image;  // the image
+  gchar *image_png;  // PNG of original image, for save and clipboard
+  gsize image_png_len;
 } Item;
 
 // item type values for Item.type, UndoItem.type, ui.cur_item_type ...
@@ -202,6 +222,8 @@ typedef struct Item {
 #define ITEM_TEXT_ATTRIB 21
 #define ITEM_RESIZESEL 22
 #define ITEM_RECOGNIZER 23
+#define ITEM_IMAGE 24
+#define ITEM_SELECTREGION 25
 
 typedef struct Layer {
   GList *items; // the items on the layer, from bottom to top
@@ -225,7 +247,7 @@ typedef struct Journal {
 } Journal;
 
 typedef struct Selection {
-  int type;  // ITEM_SELECTRECT, ITEM_MOVESEL_VERT
+  int type;  // ITEM_SELECTRECT, ITEM_MOVESEL_VERT, ITEM_SELECTREGION
   BBox bbox; // the rectangle bbox of the selection
   struct Layer *layer; // the layer on which the selection lives
   double anchor_x, anchor_y, last_x, last_y; // for selection motion
@@ -270,6 +292,7 @@ typedef struct UIData {
   gboolean is_corestroke; // this stroke is painted with core pointer
   gboolean saved_is_corestroke;
   GdkDevice *stroke_device; // who's painting this stroke
+  gboolean ignore_other_devices;
   int screen_width, screen_height; // initial screen size, for XInput events
   GdkRectangle monitor_geometry; // monitor geometry of main monitor (height, width, origin), necessary for xinput events and multimonitor setups on windows
   double hand_refpt[2];
@@ -277,10 +300,13 @@ typedef struct UIData {
   gboolean hand_scrollto_pending;
   char *filename;
   gchar *default_path; // default path for new notes
+  gchar *default_image; // path for previous image
   gboolean view_continuous, fullscreen, maximize_at_start;
   gboolean in_update_page_stuff; // semaphore to avoid scrollbar retroaction
   struct Selection *selection;
   GdkCursor *cursor;
+  GdkPixbuf *pen_cursor_pix, *hiliter_cursor_pix;
+  gboolean pen_cursor; // use pencil cursor (default is a dot in current color)
   gboolean progressive_bg; // update PDF bg's one at a time
   char *mrufile, *configfile; // file names for MRU & config
   char *mru[MRU_SIZE]; // MRU data
@@ -328,8 +354,8 @@ typedef struct UndoErasureData {
 
 typedef struct UndoItem {
   int type;
-  struct Item *item; // for ITEM_STROKE, ITEM_TEXT, ITEM_TEXT_EDIT, ITEM_TEXT_ATTRIB
-  struct Layer *layer; // for ITEM_STROKE, ITEM_ERASURE, ITEM_PASTE, ITEM_NEW_LAYER, ITEM_DELETE_LAYER, ITEM_MOVESEL, ITEM_TEXT, ITEM_TEXT_EDIT, ITEM_RECOGNIZER
+  struct Item *item; // for ITEM_STROKE, ITEM_TEXT, ITEM_TEXT_EDIT, ITEM_TEXT_ATTRIB, ITEM_IMAGE
+  struct Layer *layer; // for ITEM_STROKE, ITEM_ERASURE, ITEM_PASTE, ITEM_NEW_LAYER, ITEM_DELETE_LAYER, ITEM_MOVESEL, ITEM_TEXT, ITEM_TEXT_EDIT, ITEM_RECOGNIZER, ITEM_IMAGE
   struct Layer *layer2; // for ITEM_DELETE_LAYER with val=-1, ITEM_MOVESEL
   struct Page *page;  // for ITEM_NEW_BG_ONE/RESIZE, ITEM_NEW_PAGE, ITEM_NEW_LAYER, ITEM_DELETE_LAYER, ITEM_DELETE_PAGE
   GList *erasurelist; // for ITEM_ERASURE, ITEM_RECOGNIZER

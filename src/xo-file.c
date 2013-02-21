@@ -1,3 +1,18 @@
+/*
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *
+ *  This software is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of  
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #ifdef HAVE_CONFIG_H
 #  include <config.h>
 #endif
@@ -28,8 +43,9 @@
 #include "xo-misc.h"
 #include "xo-file.h"
 #include "xo-paint.h"
+#include "xo-image.h"
 
-const char *tool_names[NUM_TOOLS] = {"pen", "eraser", "highlighter", "text", "", "selectrect", "vertspace", "hand"};
+const char *tool_names[NUM_TOOLS] = {"pen", "eraser", "highlighter", "text", "selectregion", "selectrect", "vertspace", "hand", "image"};
 const char *color_names[COLOR_MAX] = {"black", "blue", "red", "green",
    "gray", "lightblue", "lightgreen", "magenta", "orange", "yellow", "white"};
 const char *bgtype_names[3] = {"solid", "pixmap", "pdf"};
@@ -69,6 +85,47 @@ void chk_attach_names(void)
         bg->filename->s != NULL) continue;
     bg->filename->s = g_strdup_printf("bg_%d.png", ++journal.last_attach_no);
   }
+}
+
+/* Write image to file: returns true on success, false on error.
+   The image is written as a base64 encoded PNG. */
+
+gboolean write_image(gzFile f, Item *item)
+{
+  gchar *base64_str;
+
+  if (item->image_png == NULL) {
+    if (!gdk_pixbuf_save_to_buffer(item->image, &item->image_png, &item->image_png_len, "png", NULL, NULL)) {
+      item->image_png_len = 0;       // failed for some reason, so forget it
+      return FALSE;
+    }
+  }
+
+  base64_str = g_base64_encode(item->image_png, item->image_png_len);
+  gzputs(f, base64_str);
+  g_free(base64_str);
+  return TRUE;
+}
+
+// create pixbuf from base64 encoded PNG, or return NULL on failure
+
+GdkPixbuf *read_pixbuf(const gchar *base64_str, gsize base64_strlen)
+{
+  gchar *base64_str2;
+  gchar *png_buf;
+  gsize png_buflen;
+  GdkPixbuf *pixbuf;
+
+  // We have to copy the string in order to null terminate it, sigh.
+  base64_str2 = g_memdup(base64_str, base64_strlen+1);
+  base64_str2[base64_strlen] = 0;
+  png_buf = g_base64_decode(base64_str2, &png_buflen);
+
+  pixbuf = pixbuf_from_buffer(png_buf, png_buflen);
+
+  g_free(png_buf);
+  g_free(base64_str2);
+  return pixbuf;
 }
 
 // saves the journal to a file: returns true on success, false on error
@@ -204,6 +261,12 @@ gboolean save_journal(const char *filename)
           gzputs(f, "</text>\n");
           g_free(tmpstr);
         }
+        if (item->type == ITEM_IMAGE) {
+          gzprintf(f, "<image left=\"%.2f\" top=\"%.2f\" right=\"%.2f\" bottom=\"%.2f\">", 
+            item->bbox.left, item->bbox.top, item->bbox.right, item->bbox.bottom);
+          if (!write_image(f, item)) success = FALSE;
+          gzprintf(f, "</image>\n");
+        }
       }
       gzprintf(f, "</layer>\n");
     }
@@ -237,10 +300,16 @@ gboolean close_journal(void)
 }
 
 // sanitize a string containing floats, in case it may have , instead of .
+// also replace Windows-produced 1.#J by inf
 
 void cleanup_numeric(char *s)
 {
-  while (*s!=0) { if (*s==',') *s='.'; s++; }
+  while (*s!=0) { 
+    if (*s==',') *s='.'; 
+    if (*s=='1' && s[1]=='.' && s[2]=='#' && s[3]=='J') 
+      { *s='i'; s[1]='n'; s[2]='f'; s[3]=' '; }
+    s++; 
+  }
 }
 
 // the XML parser functions for open_journal()
@@ -387,7 +456,7 @@ void xoj_parser_start_element(GMarkupParseContext *context,
             { *error = xoj_invalid(); return; }
           tmpPage->bg->filename = refstring_ref(tmpbg->filename);
           tmpPage->bg->pixbuf = tmpbg->pixbuf;
-          if (tmpbg->pixbuf!=NULL) gdk_pixbuf_ref(tmpbg->pixbuf);
+          if (tmpbg->pixbuf!=NULL) g_object_ref(tmpbg->pixbuf);
           tmpPage->bg->file_domain = tmpbg->file_domain;
         }
         else {
@@ -580,6 +649,56 @@ void xoj_parser_start_element(GMarkupParseContext *context,
     }
     if (has_attr!=31) *error = xoj_invalid();
   }
+  else if (!strcmp(element_name, "image")) { // start of a image item
+    if (tmpLayer == NULL || tmpItem != NULL) {
+      *error = xoj_invalid();
+      return;
+    }
+    tmpItem = (struct Item *)g_malloc0(sizeof(struct Item));
+    tmpItem->type = ITEM_IMAGE;
+    tmpItem->canvas_item = NULL;
+    tmpItem->image=NULL;
+    tmpItem->image_png = NULL;
+    tmpItem->image_png_len = 0;
+    tmpLayer->items = g_list_append(tmpLayer->items, tmpItem);
+    tmpLayer->nitems++;
+    // scan for x, y
+    has_attr = 0;
+    while (*attribute_names!=NULL) {
+      if (!strcmp(*attribute_names, "left")) {
+        if (has_attr & 1) *error = xoj_invalid();
+        cleanup_numeric((gchar *)*attribute_values);
+        tmpItem->bbox.left = g_ascii_strtod(*attribute_values, &ptr);
+        if (ptr == *attribute_values) *error = xoj_invalid();
+        has_attr |= 1;
+      }
+      else if (!strcmp(*attribute_names, "top")) {
+        if (has_attr & 2) *error = xoj_invalid();
+        cleanup_numeric((gchar *)*attribute_values);
+        tmpItem->bbox.top = g_ascii_strtod(*attribute_values, &ptr);
+        if (ptr == *attribute_values) *error = xoj_invalid();
+        has_attr |= 2;
+      }
+      else if (!strcmp(*attribute_names, "right")) {
+        if (has_attr & 4) *error = xoj_invalid();
+        cleanup_numeric((gchar *)*attribute_values);
+        tmpItem->bbox.right = g_ascii_strtod(*attribute_values, &ptr);
+        if (ptr == *attribute_values) *error = xoj_invalid();
+        has_attr |= 4;
+      }
+      else if (!strcmp(*attribute_names, "bottom")) {
+        if (has_attr & 8) *error = xoj_invalid();
+        cleanup_numeric((gchar *)*attribute_values);
+        tmpItem->bbox.bottom = g_ascii_strtod(*attribute_values, &ptr);
+        if (ptr == *attribute_values) *error = xoj_invalid();
+        has_attr |= 8;
+      }
+      else *error = xoj_invalid();
+      attribute_names++;
+      attribute_values++;
+    }
+    if (has_attr!=15) *error = xoj_invalid();
+  }
 }
 
 void xoj_parser_end_element(GMarkupParseContext *context,
@@ -615,6 +734,13 @@ void xoj_parser_end_element(GMarkupParseContext *context,
     }
     tmpItem = NULL;
   }
+  if (!strcmp(element_name, "image")) {
+    if (tmpItem == NULL) {
+      *error = xoj_invalid();
+      return;
+    }
+    tmpItem = NULL;
+  }
 }
 
 void xoj_parser_text(GMarkupParseContext *context,
@@ -635,7 +761,7 @@ void xoj_parser_text(GMarkupParseContext *context,
       if (ptr == text) break;
       text_len -= (ptr - text);
       text = ptr;
-      if (!finite(ui.cur_path.coords[n])) {
+      if (!finite_sized(ui.cur_path.coords[n])) {
         if (n>=2) ui.cur_path.coords[n] = ui.cur_path.coords[n-2];
         else ui.cur_path.coords[n] = 0;
       }
@@ -651,6 +777,9 @@ void xoj_parser_text(GMarkupParseContext *context,
     tmpItem->text = g_malloc(text_len+1);
     g_memmove(tmpItem->text, text, text_len);
     tmpItem->text[text_len]=0;
+  }
+  if (!strcmp(element_name, "image")) {
+    tmpItem->image = read_pixbuf(text, text_len);
   }
 }
 
@@ -904,7 +1033,7 @@ GList *attempt_load_gv_bg(char *filename)
     if (remnlen == 0) { // make a new bg
       pix = gdk_pixbuf_loader_get_pixbuf(loader);
       if (pix == NULL) break;
-      gdk_pixbuf_ref(pix);
+      g_object_ref(pix);
       gdk_pixbuf_loader_close(loader, NULL);
       g_object_unref(loader);
       loader = NULL;
@@ -1048,7 +1177,7 @@ gboolean bgpdf_scheduler_callback(gpointer data)
       bgpdf.npages++;
     }
     bgpg = g_list_nth_data(bgpdf.pages, req->pageno-1);
-    if (bgpg->pixbuf!=NULL) gdk_pixbuf_unref(bgpg->pixbuf);
+    if (bgpg->pixbuf!=NULL) g_object_unref(bgpg->pixbuf);
     bgpg->pixbuf = pixbuf;
     bgpg->dpi = req->dpi;
     bgpg->pixel_height = scaled_height;
@@ -1111,7 +1240,7 @@ void shutdown_bgpdf(void)
   refstring_unref(bgpdf.filename);
   for (list = bgpdf.pages; list != NULL; list = list->next) {
     pdfpg = (struct BgPdfPage *)list->data;
-    if (pdfpg->pixbuf!=NULL) gdk_pixbuf_unref(pdfpg->pixbuf);
+    if (pdfpg->pixbuf!=NULL) g_object_unref(pdfpg->pixbuf);
     g_free(pdfpg);
   }
   g_list_free(bgpdf.pages);
@@ -1229,8 +1358,8 @@ void bgpdf_update_bg(int pageno, struct BgPdfPage *bgpg)
   for (list = journal.pages; list!= NULL; list = list->next) {
     pg = (struct Page *)list->data;
     if (pg->bg->type == BG_PDF && pg->bg->file_page_seq == pageno) {
-      if (pg->bg->pixbuf!=NULL) gdk_pixbuf_unref(pg->bg->pixbuf);
-      pg->bg->pixbuf = gdk_pixbuf_ref(bgpg->pixbuf);
+      if (pg->bg->pixbuf!=NULL) g_object_unref(pg->bg->pixbuf);
+      pg->bg->pixbuf = g_object_ref(bgpg->pixbuf);
       pg->bg->pixel_width = bgpg->pixel_width;
       pg->bg->pixel_height = bgpg->pixel_height;
       update_canvas_bg(pg);
@@ -1348,6 +1477,7 @@ void init_config_default(void)
   ui.view_continuous = TRUE;
   ui.allow_xinput = TRUE;
   ui.discard_corepointer = FALSE;
+  ui.ignore_other_devices = TRUE;
   ui.left_handed = FALSE;
   ui.shorten_menus = FALSE;
   ui.shorten_menu_items = g_strdup(DEFAULT_SHORTEN_MENUS);
@@ -1365,6 +1495,7 @@ void init_config_default(void)
   ui.print_ruling = TRUE;
   ui.default_unit = UNIT_CM;
   ui.default_path = NULL;
+  ui.default_image = NULL;
   ui.default_font_name = g_strdup(DEFAULT_FONT);
   ui.default_font_size = DEFAULT_FONT_SIZE;
   ui.pressure_sensitivity = FALSE;
@@ -1410,6 +1541,7 @@ void init_config_default(void)
   PDFTOPPM_PRINTING_DPI = 150;
   
   ui.hiliter_opacity = 0.5;
+  ui.pen_cursor = FALSE;
   
 #if GTK_CHECK_VERSION(2,10,0)
   ui.print_settings = NULL;
@@ -1508,6 +1640,9 @@ void save_config_to_file(void)
   update_keyval("general", "discard_corepointer",
     _(" discard Core Pointer events in XInput mode (true/false)"),
     g_strdup(ui.discard_corepointer?"true":"false"));
+  update_keyval("general", "ignore_other_devices",
+    _(" ignore events from other devices while drawing (true/false)"),
+    g_strdup(ui.ignore_other_devices?"true":"false"));
   update_keyval("general", "use_erasertip",
     _(" always map eraser tip to eraser (true/false)"),
     g_strdup(ui.use_erasertip?"true":"false"));
@@ -1588,8 +1723,11 @@ void save_config_to_file(void)
     g_strdup_printf("%d", PDFTOPPM_PRINTING_DPI));
 
   update_keyval("tools", "startup_tool",
-    _(" selected tool at startup (pen, eraser, highlighter, selectrect, vertspace, hand)"),
+    _(" selected tool at startup (pen, eraser, highlighter, selectregion, selectrect, vertspace, hand, image)"),
     g_strdup(tool_names[ui.startuptool]));
+  update_keyval("tools", "pen_cursor",
+    _(" Use the pencil from cursor theme instead of a color dot (true/false)"),
+    g_strdup(ui.pen_cursor?"true":"false"));
   update_keyval("tools", "pen_color",
     _(" default pen color"),
     (ui.default_brushes[TOOL_PEN].color_no>=0)?
@@ -1625,7 +1763,7 @@ void save_config_to_file(void)
     _(" default highlighter is in shape recognizer mode (true/false)"),
     g_strdup(ui.default_brushes[TOOL_HIGHLIGHTER].recognizer?"true":"false"));
   update_keyval("tools", "btn2_tool",
-    _(" button 2 tool (pen, eraser, highlighter, text, selectrect, vertspace, hand)"),
+    _(" button 2 tool (pen, eraser, highlighter, text, selectregion, selectrect, vertspace, hand, image)"),
     g_strdup(tool_names[ui.toolno[1]]));
   update_keyval("tools", "btn2_linked",
     _(" button 2 brush linked to primary brush (true/false) (overrides all other settings)"),
@@ -1653,7 +1791,7 @@ void save_config_to_file(void)
     _(" button 2 eraser mode (eraser only)"),
     g_strdup_printf("%d", ui.brushes[1][TOOL_ERASER].tool_options));
   update_keyval("tools", "btn3_tool",
-    _(" button 3 tool (pen, eraser, highlighter, text, selectrect, vertspace, hand)"),
+    _(" button 3 tool (pen, eraser, highlighter, text, selectregion, selectrect, vertspace, hand, image)"),
     g_strdup(tool_names[ui.toolno[2]]));
   update_keyval("tools", "btn3_linked",
     _(" button 3 brush linked to primary brush (true/false) (overrides all other settings)"),
@@ -1922,6 +2060,7 @@ void load_config_from_file(void)
   parse_keyval_boolean("general", "view_continuous", &ui.view_continuous);
   parse_keyval_boolean("general", "use_xinput", &ui.allow_xinput);
   parse_keyval_boolean("general", "discard_corepointer", &ui.discard_corepointer);
+  parse_keyval_boolean("general", "ignore_other_devices", &ui.ignore_other_devices);
   parse_keyval_boolean("general", "use_erasertip", &ui.use_erasertip);
   parse_keyval_boolean("general", "buttons_switch_mappings", &ui.button_switch_mapping);
   parse_keyval_boolean("general", "autoload_pdf_xoj", &ui.autoload_pdf_xoj);
@@ -1955,6 +2094,7 @@ void load_config_from_file(void)
 
   parse_keyval_enum("tools", "startup_tool", &ui.startuptool, tool_names, NUM_TOOLS);
   ui.toolno[0] = ui.startuptool;
+  parse_keyval_boolean("tools", "pen_cursor", &ui.pen_cursor);
   parse_keyval_enum_color("tools", "pen_color", 
      &(ui.brushes[0][TOOL_PEN].color_no), &(ui.brushes[0][TOOL_PEN].color_rgba),
      color_names, predef_colors_rgba, COLOR_MAX);

@@ -150,8 +150,8 @@ msgid "_Hide Layer"
 msgstr "_Ocultar camada"
 
 #: src/xo-interface.c:665
-msgid "_Journal"
-msgstr "_Diário"
+msgid "_Page"
+msgstr "_Página"
 
 #: src/xo-interface.c:672
 msgid "New Page _Before"
@@ -403,6 +403,9 @@ msgstr "_grosso"
 #: src/xo-interface.c:1065
 msgid "ver_y thick"
 msgstr "m_uito grosso"
+
+msgid "Pencil Cursor"
+msgstr "Cursor de lápis"
 
 #: src/xo-interface.c:1071
 msgid "Eraser Optio_ns"

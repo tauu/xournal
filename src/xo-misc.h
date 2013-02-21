@@ -1,7 +1,23 @@
+/*
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *
+ *  This software is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of  
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 // data manipulation misc functions
 
 struct Page *new_page(struct Page *template);
 struct Page *new_page_with_bg(struct Background *bg, double width, double height);
+void set_current_page(gdouble *pt);
 void realloc_cur_path(int n);
 void realloc_cur_widths(int n);
 void clear_redo_stack(void);
@@ -19,7 +35,9 @@ void refstring_unref(struct Refstring *rs);
 
 // helper functions
 
+int finite_sized(double x);
 void get_pointer_coords(GdkEvent *event, double *ret);
+void get_current_pointer_coords(double *ret);
 double get_pressure_multiplier(GdkEvent *event);
 void fix_xinput_coords(GdkEvent *event);
 void update_item_bbox(struct Item *item);

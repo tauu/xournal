@@ -1,3 +1,19 @@
+/*
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2 of the License, or (at your option) any later version.
+ *
+ *  This software is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of  
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+
 #ifdef HAVE_CONFIG_H
 #  include <config.h>
 #endif
@@ -17,6 +33,7 @@
 #include "xo-misc.h"
 #include "xo-file.h"
 #include "xo-paint.h"
+#include "xo-selection.h"
 #include "xo-print.h"
 #include "xo-shapes.h"
 
@@ -452,7 +469,7 @@ on_editUndo_activate                   (GtkMenuItem     *menuitem,
   if (undo == NULL) return; // nothing to undo!
   reset_selection(); // safer
   reset_recognizer(); // safer
-  if (undo->type == ITEM_STROKE || undo->type == ITEM_TEXT) {
+  if (undo->type == ITEM_STROKE || undo->type == ITEM_TEXT || undo->type == ITEM_IMAGE) {
     // we're keeping the stroke info, but deleting the canvas item
     gtk_object_destroy(GTK_OBJECT(undo->item->canvas_item));
     undo->item->canvas_item = NULL;
@@ -666,7 +683,7 @@ on_editRedo_activate                   (GtkMenuItem     *menuitem,
   if (redo == NULL) return; // nothing to redo!
   reset_selection(); // safer
   reset_recognizer(); // safer
-  if (redo->type == ITEM_STROKE || redo->type == ITEM_TEXT) {
+  if (redo->type == ITEM_STROKE || redo->type == ITEM_TEXT || redo->type == ITEM_IMAGE) {
     // re-create the canvas_item
     make_canvas_item_one(redo->layer->group, redo->item);
     // reinsert the item on its layer
@@ -824,6 +841,12 @@ on_editRedo_activate                   (GtkMenuItem     *menuitem,
       if (it->type == ITEM_TEXT && it->canvas_item != NULL)
         gnome_canvas_item_set(it->canvas_item, 
           "fill-color-rgba", it->brush.color_rgba, NULL);
+      if (it->type == ITEM_IMAGE && it->canvas_item != NULL) {
+        // remark: a variable-width item might have lost its variable-width
+        group = (GnomeCanvasGroup *) it->canvas_item->parent;
+        gtk_object_destroy(GTK_OBJECT(it->canvas_item));
+        make_canvas_item_one(group, it);
+      }
     }
   }
   else if (redo->type == ITEM_TEXT_EDIT) {
@@ -946,6 +969,7 @@ on_viewZoomIn_activate                 (GtkMenuItem     *menuitem,
   gnome_canvas_set_pixels_per_unit(canvas, ui.zoom);
   rescale_text_items();
   rescale_bg_pixmaps();
+  rescale_images();
 }
 
 
@@ -958,6 +982,7 @@ on_viewZoomOut_activate                (GtkMenuItem     *menuitem,
   gnome_canvas_set_pixels_per_unit(canvas, ui.zoom);
   rescale_text_items();
   rescale_bg_pixmaps();
+  rescale_images();
 }
 
 
@@ -969,6 +994,7 @@ on_viewNormalSize_activate             (GtkMenuItem     *menuitem,
   gnome_canvas_set_pixels_per_unit(canvas, ui.zoom);
   rescale_text_items();
   rescale_bg_pixmaps();
+  rescale_images();
 }
 
 
@@ -980,6 +1006,7 @@ on_viewPageWidth_activate              (GtkMenuItem     *menuitem,
   gnome_canvas_set_pixels_per_unit(canvas, ui.zoom);
   rescale_text_items();
   rescale_bg_pixmaps();
+  rescale_images();
 }
 
 
@@ -1553,6 +1580,7 @@ on_journalLoadBackground_activate      (GtkMenuItem     *menuitem,
     gnome_canvas_set_pixels_per_unit(canvas, ui.zoom);
     rescale_text_items();
     rescale_bg_pixmaps();
+    rescale_images();
   }
   do_switch_page(ui.pageno, TRUE, TRUE);
 }
@@ -1599,6 +1627,7 @@ on_journalScreenshot_activate          (GtkMenuItem     *menuitem,
     gnome_canvas_set_pixels_per_unit(canvas, ui.zoom);
     rescale_text_items();
     rescale_bg_pixmaps();
+    rescale_images();
   }
   do_switch_page(ui.pageno, TRUE, TRUE);
 }
@@ -1763,10 +1792,55 @@ on_toolsText_activate                  (GtkMenuItem     *menuitem,
 
 
 void
+on_toolsImage_activate                 (GtkMenuItem *menuitem,
+                                        gpointer         user_data)
+{
+  if (GTK_OBJECT_TYPE(menuitem) == GTK_TYPE_RADIO_MENU_ITEM) {
+    if (!gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM (menuitem)))
+      return;
+  } else {
+    if (!gtk_toggle_tool_button_get_active(GTK_TOGGLE_TOOL_BUTTON (menuitem)))
+      return;
+  }
+  
+  if (ui.cur_mapping != 0 && !ui.button_switch_mapping) return; // not user-generated
+  if (ui.toolno[ui.cur_mapping] == TOOL_IMAGE) return;
+  
+  ui.cur_mapping = 0; // don't use switch_mapping() (refreshes buttons too soon)
+  end_text();
+  reset_selection();
+  ui.toolno[ui.cur_mapping] = TOOL_IMAGE;
+  update_mapping_linkings(-1);
+  update_tool_buttons();
+  update_tool_menu();
+  update_color_menu();
+  update_cursor();
+}
+
+
+void
 on_toolsSelectRegion_activate          (GtkMenuItem     *menuitem,
                                         gpointer         user_data)
 {
-
+  if (GTK_OBJECT_TYPE(menuitem) == GTK_TYPE_RADIO_MENU_ITEM) {
+    if (!gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM (menuitem)))
+      return;
+  } else {
+    if (!gtk_toggle_tool_button_get_active(GTK_TOGGLE_TOOL_BUTTON (menuitem)))
+      return;
+  }
+  
+  if (ui.cur_mapping != 0 && !ui.button_switch_mapping) return; // not user-generated
+  if (ui.toolno[ui.cur_mapping] == TOOL_SELECTREGION) return;
+  
+  ui.cur_mapping = 0; // don't use switch_mapping() (refreshes buttons too soon)
+  end_text();
+  ui.toolno[ui.cur_mapping] = TOOL_SELECTREGION;
+  update_mapping_linkings(-1);
+  update_tool_buttons();
+  update_tool_menu();
+  update_color_menu();
+  update_cursor();
 }
 
 
@@ -2335,8 +2409,6 @@ on_canvas_button_press_event           (GtkWidget       *widget,
                                         gpointer         user_data)
 {
   double pt[2];
-  gboolean page_change;
-  struct Page *tmppage;
   GtkWidget *dialog;
   int mapping;
   gboolean is_core;
@@ -2389,7 +2461,7 @@ on_canvas_button_press_event           (GtkWidget       *widget,
   if (!is_core)
     fix_xinput_coords((GdkEvent *)event);
 
-  if (!finite(event->x) || !finite(event->y)) return FALSE; // Xorg 7.3 bug
+  if (!finite_sized(event->x) || !finite_sized(event->y)) return FALSE; // Xorg 7.3 bug
 
   if (ui.cur_item_type == ITEM_TEXT) {
     if (!is_event_within_textview(event)) end_text();
@@ -2399,6 +2471,7 @@ on_canvas_button_press_event           (GtkWidget       *widget,
       ui.cur_path.num_points == 1) { 
       // Xorg 7.3+ sent core event before XInput event: fix initial point 
     ui.is_corestroke = FALSE;
+    ui.stroke_device = event->device;
     get_pointer_coords((GdkEvent *)event, ui.cur_path.coords);
   }
   if (ui.cur_item_type != ITEM_NONE) return FALSE; // we're already doing something
@@ -2423,24 +2496,8 @@ on_canvas_button_press_event           (GtkWidget       *widget,
   else mapping = event->button-1;
 
   // check whether we're in a page
-  page_change = FALSE;
-  tmppage = ui.cur_page;
   get_pointer_coords((GdkEvent *)event, pt);
-  while (ui.view_continuous && (pt[1] < - VIEW_CONTINUOUS_SKIP)) {
-    if (ui.pageno == 0) break;
-    page_change = TRUE;
-    ui.pageno--;
-    tmppage = g_list_nth_data(journal.pages, ui.pageno);
-    pt[1] += tmppage->height + VIEW_CONTINUOUS_SKIP;
-  }
-  while (ui.view_continuous && (pt[1] > tmppage->height + VIEW_CONTINUOUS_SKIP)) {
-    if (ui.pageno == journal.npages-1) break;
-    pt[1] -= tmppage->height + VIEW_CONTINUOUS_SKIP;
-    page_change = TRUE;
-    ui.pageno++;
-    tmppage = g_list_nth_data(journal.pages, ui.pageno);
-  }
-  if (page_change) do_switch_page(ui.pageno, FALSE, FALSE);
+  set_current_page(pt);
   
   // can't paint on the background...
 
@@ -2497,6 +2554,9 @@ on_canvas_button_press_event           (GtkWidget       *widget,
     do_eraser((GdkEvent *)event, ui.cur_brush->thickness/2,
                ui.cur_brush->tool_options == TOOLOPT_ERASER_STROKES);
   }
+  else if (ui.toolno[mapping] == TOOL_SELECTREGION) {
+    start_selectregion((GdkEvent *)event);
+  }
   else if (ui.toolno[mapping] == TOOL_SELECTRECT) {
     start_selectrect((GdkEvent *)event);
   }
@@ -2505,6 +2565,9 @@ on_canvas_button_press_event           (GtkWidget       *widget,
   }
   else if (ui.toolno[mapping] == TOOL_TEXT) {
     start_text((GdkEvent *)event, NULL);
+  }
+  else if (ui.toolno[mapping] == TOOL_IMAGE) {
+    insert_image((GdkEvent *)event);
   }
   return FALSE;
 }
@@ -2525,6 +2588,7 @@ on_canvas_button_release_event         (GtkWidget       *widget,
   is_core = (event->device == gdk_device_get_core_pointer());
   if (!ui.use_xinput && !is_core) return FALSE;
   if (ui.use_xinput && is_core && !ui.is_corestroke) return FALSE;
+  if (ui.ignore_other_devices && ui.stroke_device!=event->device) return FALSE;
   if (!is_core) fix_xinput_coords((GdkEvent *)event);
 
   if (event->button != ui.which_mouse_button && 
@@ -2537,6 +2601,9 @@ on_canvas_button_release_event         (GtkWidget       *widget,
   }
   else if (ui.cur_item_type == ITEM_ERASURE) {
     finalize_erasure();
+  }
+  else if (ui.cur_item_type == ITEM_SELECTREGION) {
+    finalize_selectregion();
   }
   else if (ui.cur_item_type == ITEM_SELECTRECT) {
     finalize_selectrect();
@@ -2695,12 +2762,12 @@ on_canvas_motion_notify_event          (GtkWidget       *widget,
      or if there's a selection (then we might want to change the mouse
      cursor to indicate the possibility of resizing) */  
   if (ui.cur_item_type == ITEM_NONE && ui.selection==NULL) return FALSE;
-  if (ui.cur_item_type == ITEM_TEXT) return FALSE;
+  if (ui.cur_item_type == ITEM_TEXT || ui.cur_item_type == ITEM_IMAGE) return FALSE;
 
   is_core = (event->device == gdk_device_get_core_pointer());
   if (!ui.use_xinput && !is_core) return FALSE;
   if (!is_core) fix_xinput_coords((GdkEvent *)event);
-  if (!finite(event->x) || !finite(event->y)) return FALSE; // Xorg 7.3 bug
+  if (!finite_sized(event->x) || !finite_sized(event->y)) return FALSE; // Xorg 7.3 bug
 
   if (ui.selection!=NULL && ui.cur_item_type == ITEM_NONE) {
     get_pointer_coords((GdkEvent *)event, pt);
@@ -2709,11 +2776,15 @@ on_canvas_motion_notify_event          (GtkWidget       *widget,
   }
 
   if (ui.use_xinput && is_core && !ui.is_corestroke) return FALSE;
-  if (!is_core) ui.is_corestroke = FALSE;
+  if (!is_core && ui.is_corestroke) {
+    ui.is_corestroke = FALSE;
+    ui.stroke_device = event->device;
+  }
+  if (ui.ignore_other_devices && ui.stroke_device!=event->device) return FALSE;
 
 #ifdef INPUT_DEBUG
   printf("DEBUG: MotionNotify (%s) (x,y)=(%.2f,%.2f), modifier %x\n", 
-    is_core?"core":"xinput", event->x, event->y, event->state);
+    event->device->name, event->x, event->y, event->state);
 #endif
   
   looks_wrong = !(event->state & (1<<(7+ui.which_mouse_button)));
@@ -2729,6 +2800,9 @@ on_canvas_motion_notify_event          (GtkWidget       *widget,
     }
     else if (ui.cur_item_type == ITEM_ERASURE) {
       finalize_erasure();
+    }
+    else if (ui.cur_item_type == ITEM_SELECTREGION) {
+      finalize_selectregion();
     }
     else if (ui.cur_item_type == ITEM_SELECTRECT) {
       finalize_selectrect();
@@ -2752,6 +2826,9 @@ on_canvas_motion_notify_event          (GtkWidget       *widget,
   else if (ui.cur_item_type == ITEM_ERASURE) {
     do_eraser((GdkEvent *)event, ui.cur_brush->thickness/2,
                ui.cur_brush->tool_options == TOOLOPT_ERASER_STROKES);
+  }
+  else if (ui.cur_item_type == ITEM_SELECTREGION) {
+    continue_selectregion((GdkEvent *)event);
   }
   else if (ui.cur_item_type == ITEM_SELECTRECT) {
     get_pointer_coords((GdkEvent *)event, pt);
@@ -3219,6 +3296,14 @@ on_button2Text_activate                (GtkMenuItem     *menuitem,
 
 
 void
+on_button2Image_activate               (GtkMenuItem     *menuitem,
+                                        gpointer         user_data)
+{
+  process_mapping_activate(menuitem, 1, TOOL_IMAGE);
+}
+
+
+void
 on_button2SelectRegion_activate        (GtkMenuItem     *menuitem,
                                         gpointer         user_data)
 {
@@ -3300,6 +3385,14 @@ on_button3Text_activate                (GtkMenuItem     *menuitem,
                                         gpointer         user_data)
 {
   process_mapping_activate(menuitem, 2, TOOL_TEXT);
+}
+
+
+void
+on_button3Image_activate               (GtkMenuItem     *menuitem,
+                                        gpointer         user_data)
+{
+  process_mapping_activate(menuitem, 2, TOOL_IMAGE);
 }
 
 
@@ -3396,6 +3489,7 @@ on_viewSetZoom_activate                (GtkMenuItem     *menuitem,
       gnome_canvas_set_pixels_per_unit(canvas, ui.zoom);
       rescale_text_items();
       rescale_bg_pixmaps();
+      rescale_images();
     }
   } while (response == GTK_RESPONSE_APPLY);
   
@@ -3619,3 +3713,12 @@ on_optionsButtonsSwitchMappings_activate(GtkMenuItem    *menuitem,
   ui.button_switch_mapping = gtk_check_menu_item_get_active(GTK_CHECK_MENU_ITEM (menuitem));
 }
 
+
+
+void
+on_optionsPenCursor_activate           (GtkCheckMenuItem *checkmenuitem,
+                                        gpointer         user_data)
+{
+  ui.pen_cursor = gtk_check_menu_item_get_active(checkmenuitem);
+  update_cursor();
+}

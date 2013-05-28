@@ -1495,6 +1495,8 @@ void init_config_default(void)
   ui.print_ruling = TRUE;
   ui.default_unit = UNIT_CM;
   ui.default_path = NULL;
+  ui.default_filename = "%Y-%m-%d-Note-%H-%M.xoj";
+  ui.save_on_page_switch = FALSE;
   ui.default_image = NULL;
   ui.default_font_name = g_strdup(DEFAULT_FONT);
   ui.default_font_size = DEFAULT_FONT_SIZE;
@@ -1646,6 +1648,12 @@ void save_config_to_file(void)
   update_keyval("general", "default_path",
     _(" default path for open/save (leave blank for current directory)"),
     g_strdup((ui.default_path!=NULL)?ui.default_path:""));
+  update_keyval("general", "default_filename",
+    _(" default filename for save"),
+    g_strdup((ui.default_filename!=NULL)?ui.default_filename:"%Y-%m-%d-Note-%H-%M.xoj"));
+  update_keyval("general", "save_on_page_switch",
+    _(" save file before switching pages"),
+    g_strdup(ui.save_on_page_switch?"true":"false"));
   update_keyval("general", "pressure_sensitivity",
      _(" use pressure sensitivity to control pen stroke width (true/false)"),
      g_strdup(ui.pressure_sensitivity?"true":"false"));
@@ -2035,6 +2043,8 @@ void load_config_from_file(void)
   parse_keyval_boolean("general", "buttons_switch_mappings", &ui.button_switch_mapping);
   parse_keyval_boolean("general", "autoload_pdf_xoj", &ui.autoload_pdf_xoj);
   parse_keyval_string("general", "default_path", &ui.default_path);
+  parse_keyval_string("general", "default_filename", &ui.default_filename);
+  parse_keyval_boolean("general", "save_on_page_switch", &ui.save_on_page_switch);
   parse_keyval_boolean("general", "pressure_sensitivity", &ui.pressure_sensitivity);
   parse_keyval_float("general", "width_minimum_multiplier", &ui.width_minimum_multiplier, 0., 10.);
   parse_keyval_float("general", "width_maximum_multiplier", &ui.width_maximum_multiplier, 0., 10.);

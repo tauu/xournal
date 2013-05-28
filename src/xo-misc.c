@@ -1315,6 +1315,12 @@ void do_switch_page(int pg, gboolean rescroll, gboolean refresh_all)
   struct Layer *layer;
   GList *list;
   
+  /* save file */
+  if (ui.save_on_page_switch) {
+	 GtkWidget * fileSave = lookup_widget(winMain,"fileSave");
+    gtk_menu_item_activate((GtkMenuItem *)fileSave);
+  }
+
   ui.pageno = pg;
 
   /* re-show all the layers of the old page */

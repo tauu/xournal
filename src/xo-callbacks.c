@@ -211,7 +211,7 @@ on_fileSaveAs_activate                 (GtkMenuItem     *menuitem,
   GtkWidget *dialog, *warning_dialog;
   GtkFileFilter *filt_all, *filt_xoj;
   char *filename;
-  char stime[30];
+  char stime[64];
   time_t curtime;
   gboolean warn;
   struct stat stat_buf;
@@ -238,7 +238,7 @@ on_fileSaveAs_activate                 (GtkMenuItem     *menuitem,
   }
   else {
     curtime = time(NULL);
-    strftime(stime, 30, "%Y-%m-%d-Note-%H-%M.xoj", localtime(&curtime));
+    strftime(stime, 64, ui.default_filename, localtime(&curtime));
     if (ui.default_path!=NULL)
       gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER (dialog), ui.default_path);
     gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER (dialog), stime);

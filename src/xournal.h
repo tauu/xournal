@@ -300,6 +300,8 @@ typedef struct UIData {
   gboolean hand_scrollto_pending;
   char *filename;
   gchar *default_path; // default path for new notes
+  gchar *default_filename; // default filename of new notes
+  gboolean save_on_page_switch; // save file before each page switch
   gchar *default_image; // path for previous image
   gboolean view_continuous, fullscreen, maximize_at_start;
   gboolean in_update_page_stuff; // semaphore to avoid scrollbar retroaction

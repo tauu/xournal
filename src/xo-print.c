@@ -1302,10 +1302,10 @@ void pdf_draw_page(struct Page *pg, GString *str, gboolean *use_hiliter,
 
 gboolean print_to_pdf(char *filename)
 {
-  return print_to_pdf(filename,0,-1);
+  return print_to_pdf_part(filename,0,-1);
 }
 
-gboolean print_to_pdf(char *filename, int p_start, int p_count)
+gboolean print_to_pdf_part(char *filename, int p_start, int p_count)
 {
   FILE *f;
   GString *pdfbuf, *pgstrm, *zpgstrm, *tmpstr;
@@ -1366,7 +1366,7 @@ gboolean print_to_pdf(char *filename, int p_start, int p_count)
     "%d 0 obj\n<< /Type /Pages /Kids [", n_obj_catalog+1);
   for (i=0;i<journal.npages;i++)
     g_string_append_printf(pdfbuf, "%d 0 R ", n_obj_pages_offs+i);
-  g_string_append_printf(pdfbuf, "] /Count %d >> endobj\n", journal.npages);
+  g_string_append_printf(pdfbuf, "] /Count %d >> endobj\n", p_count >= 0 ? p_count : journal.npages);
   make_xref(&xref, n_obj_catalog+2, pdfbuf->len);
   g_string_append_printf(pdfbuf, 
     "%d 0 obj\n<< /Type /ExtGState /CA %.2f >> endobj\n",

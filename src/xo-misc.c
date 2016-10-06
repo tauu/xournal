@@ -1324,8 +1324,8 @@ void do_switch_page(int pg, gboolean rescroll, gboolean refresh_all)
   }
   /* export current page to pdf */
   if (ui.filename && ui.progress_export_enabled ) {
-	g_snprintf(tmp, 256, _("%s/%s_page_%d.pdf"), ui.progess_export_dir, g_basename(ui.filename),ui.page_no);
-	print_to_pdf(tmp, ui.pageno, 1);	
+	g_snprintf(tmp, 256, _("%s/%s_page_%d.pdf"), ui.progress_export_dir, g_basename(ui.filename),ui.pageno);
+	print_to_pdf_part(tmp, ui.pageno, 1);	
   }
 
   ui.pageno = pg;

@@ -56,7 +56,7 @@ create_winMain (void)
   GtkWidget *image624;
   GtkWidget *filePrint;
   GtkWidget *filePrintPDF;
-  GtkWidget *fileProgressExport
+  GtkWidget *fileProgressExport;
   GtkWidget *separator2;
   GtkWidget *fileQuit;
   GtkWidget *menuEdit;

@@ -348,6 +348,8 @@ typedef struct UIData {
   gchar * notify_port;
   gchar * notify_next_page_msg;
   gchar * notify_prev_page_msg;
+  gboolean progress_export_enabled;
+  gchar * progress_export_dir;
 } UIData;
 
 #define BRUSH_LINKED 0

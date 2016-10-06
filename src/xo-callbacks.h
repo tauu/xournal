@@ -49,6 +49,10 @@ on_filePrintPDF_activate               (GtkMenuItem     *menuitem,
                                         gpointer         user_data);
 
 void
+on_fileProgressExport_activate         (GtkMenuItem     *menuitem,
+                                        gpointer         user_data);
+
+void
 on_fileQuit_activate                   (GtkMenuItem     *menuitem,
                                         gpointer         user_data);
 

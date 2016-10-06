@@ -56,6 +56,7 @@ create_winMain (void)
   GtkWidget *image624;
   GtkWidget *filePrint;
   GtkWidget *filePrintPDF;
+  GtkWidget *fileProgressExport
   GtkWidget *separator2;
   GtkWidget *fileQuit;
   GtkWidget *menuEdit;
@@ -463,6 +464,10 @@ create_winMain (void)
   gtk_widget_add_accelerator (filePrintPDF, "activate", accel_group,
                               GDK_E, (GdkModifierType) GDK_CONTROL_MASK,
                               GTK_ACCEL_VISIBLE);
+
+  fileProgressExport = gtk_check_menu_item_new_with_mnemonic (_("Autoexport to PDF"));
+  gtk_widget_show (fileProgressExport);
+  gtk_container_add (GTK_CONTAINER (menuFile_menu), fileProgressExport);
 
   separator2 = gtk_separator_menu_item_new ();
   gtk_widget_show (separator2);
@@ -2041,6 +2046,9 @@ create_winMain (void)
   g_signal_connect ((gpointer) filePrintPDF, "activate",
                     G_CALLBACK (on_filePrintPDF_activate),
                     NULL);
+  g_signal_connect ((gpointer) fileProgressExport, "activate",
+                    G_CALLBACK (on_fileProgressExport_activate),
+                    NULL);
   g_signal_connect ((gpointer) fileQuit, "activate",
                     G_CALLBACK (on_fileQuit_activate),
                     NULL);
@@ -2589,6 +2597,7 @@ create_winMain (void)
   GLADE_HOOKUP_OBJECT (winMain, image624, "image624");
   GLADE_HOOKUP_OBJECT (winMain, filePrint, "filePrint");
   GLADE_HOOKUP_OBJECT (winMain, filePrintPDF, "filePrintPDF");
+  GLADE_HOOKUP_OBJECT (winMain, fileProgressExport, "fileProgressExport");
   GLADE_HOOKUP_OBJECT (winMain, separator2, "separator2");
   GLADE_HOOKUP_OBJECT (winMain, fileQuit, "fileQuit");
   GLADE_HOOKUP_OBJECT (winMain, menuEdit, "menuEdit");

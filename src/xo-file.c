@@ -1558,6 +1558,10 @@ void init_config_default(void)
   ui.notify_port = "1337";
   ui.notify_next_page_msg = NULL;
   ui.notify_prev_page_msg = NULL;
+
+  // automatic single page export
+  ui.progress_export_enabled = FALSE;
+  ui.progress_export_dir = "";
 }
 
 #if GLIB_CHECK_VERSION(2,6,0)
@@ -1870,6 +1874,12 @@ void save_config_to_file(void)
   update_keyval("history_notification", "notify_prev_page_msg",
     _("message to send the server if the program switches to the previous page"),
     g_strdup((ui.notify_prev_page_msg!=NULL)?ui.notify_prev_page_msg:""));
+  update_keyval("progress_export", "progress_export_enabled",
+    _("export the current page to a pdf when switching pages"),
+    g_strdup((ui.progress_export_enabled)?"true":"false"));
+  update_keyval("progress_export", "progress_export_dir",
+    _("folder in the exported single page pdfs should be stored"),
+    g_strdup((ui.progress_export_dir!=NULL)?ui.progress_export_dir:""));
 
   buf = g_key_file_to_data(ui.config_data, NULL, NULL);
   if (buf == NULL) return;
@@ -2169,5 +2179,7 @@ void load_config_from_file(void)
   parse_keyval_string("history_notification", "notify_port", &ui.notify_port);
   parse_keyval_string("history_notification", "notify_next_page_msg", &ui.notify_next_page_msg);
   parse_keyval_string("history_notification", "notify_prev_page_msg", &ui.notify_prev_page_msg);
+  parse_keyval_boolean("progress_export", "progress_export_enabled", &ui.progress_export_enabled);
+  parse_keyval_string("progress_export", "progress_export_dir", &ui.progress_export_dir);
 #endif
 }

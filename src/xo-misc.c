@@ -45,6 +45,7 @@
 #include "xo-paint.h"
 #include "xo-shapes.h"
 #include "xo-image.h"
+#include "xo-print.h"
 
 // some global constants
 
@@ -1314,11 +1315,17 @@ void do_switch_page(int pg, gboolean rescroll, gboolean refresh_all)
   int i, cx, cy;
   struct Layer *layer;
   GList *list;
+  gchar tmp[256];
   
   /* save file */
   if (ui.save_on_page_switch) {
 	 GtkWidget * fileSave = lookup_widget(winMain,"fileSave");
     gtk_menu_item_activate((GtkMenuItem *)fileSave);
+  }
+  /* export current page to pdf */
+  if (ui.filename && ui.progress_export_enabled ) {
+	g_snprintf(tmp, 256, _("%s/%s_page_%d.pdf"), ui.progess_export_dir, g_basename(ui.filename),ui.page_no);
+	print_to_pdf(tmp, ui.pageno, 1);	
   }
 
   ui.pageno = pg;

@@ -1302,6 +1302,11 @@ void pdf_draw_page(struct Page *pg, GString *str, gboolean *use_hiliter,
 
 gboolean print_to_pdf(char *filename)
 {
+  return print_to_pdf(filename,0,-1);
+}
+
+gboolean print_to_pdf(char *filename, int p_start, int p_count)
+{
   FILE *f;
   GString *pdfbuf, *pgstrm, *zpgstrm, *tmpstr;
   int n_obj_catalog, n_obj_pages_offs, n_page, n_obj_bgpix, n_obj_prefix;
@@ -1368,7 +1373,14 @@ gboolean print_to_pdf(char *filename)
      n_obj_catalog+2, ui.hiliter_opacity);
   xref.last = n_obj_pages_offs + journal.npages-1;
   
-  for (pglist = journal.pages, n_page = 0; pglist!=NULL;
+  // skip to first page
+  pglist = journal.pages;
+  for (i=0;i < p_start && pglist != NULL; i++ ) {
+	  pglist = pglist->next;
+  }
+  
+  // write p_count pages or all pages if p_count < 0
+  for (n_page = 0; pglist!=NULL && (p_count < 0 || n_page < p_count);
        pglist = pglist->next, n_page++) {
     pg = (struct Page *)pglist->data;
     

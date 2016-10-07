@@ -1300,6 +1300,16 @@ void pdf_draw_page(struct Page *pg, GString *str, gboolean *use_hiliter,
     3 ... the page objects
 */
 
+gboolean progress_export(void) {
+  char tmp[256];
+  /* export current page to pdf */
+  if (ui.filename && ui.progress_export_enabled ) {
+	g_snprintf(tmp, 256, _("%s/%s_page_%d.pdf"), ui.progress_export_dir, g_basename(ui.filename),ui.pageno);
+	return print_to_pdf_part(tmp, ui.pageno, 1);	
+  }
+  return true;
+}
+
 gboolean print_to_pdf(char *filename)
 {
   return print_to_pdf_part(filename,0,-1);
@@ -1322,6 +1332,8 @@ gboolean print_to_pdf_part(char *filename, int p_start, int p_count)
   struct PdfFont *font;
   struct PdfImage *image;
   char *tmpbuf;
+  // number of pages to print
+  int npages = p_count > 0 ? p_count : journal.npages;
   
   f = fopen(filename, "wb");
   if (f == NULL) return FALSE;
@@ -1364,14 +1376,14 @@ gboolean print_to_pdf_part(char *filename, int p_start, int p_count)
   make_xref(&xref, n_obj_catalog+1, pdfbuf->len);
   g_string_append_printf(pdfbuf,
     "%d 0 obj\n<< /Type /Pages /Kids [", n_obj_catalog+1);
-  for (i=0;i<journal.npages;i++)
+  for (i=0;i<npages;i++)
     g_string_append_printf(pdfbuf, "%d 0 R ", n_obj_pages_offs+i);
-  g_string_append_printf(pdfbuf, "] /Count %d >> endobj\n", p_count >= 0 ? p_count : journal.npages);
+  g_string_append_printf(pdfbuf, "] /Count %d >> endobj\n", npages);
   make_xref(&xref, n_obj_catalog+2, pdfbuf->len);
   g_string_append_printf(pdfbuf, 
     "%d 0 obj\n<< /Type /ExtGState /CA %.2f >> endobj\n",
      n_obj_catalog+2, ui.hiliter_opacity);
-  xref.last = n_obj_pages_offs + journal.npages-1;
+  xref.last = n_obj_pages_offs + npages-1;
   
   // skip to first page
   pglist = journal.pages;

@@ -44,6 +44,7 @@
 #include "xo-file.h"
 #include "xo-paint.h"
 #include "xo-image.h"
+#include "xo-print.h"
 
 const char *tool_names[NUM_TOOLS] = {"pen", "eraser", "highlighter", "text", "selectregion", "selectrect", "vertspace", "hand", "image"};
 const char *color_names[COLOR_MAX] = {"black", "blue", "red", "green",
@@ -276,6 +277,9 @@ gboolean save_journal(const char *filename)
   gzclose(f);
   setlocale(LC_NUMERIC, "");
 
+  /* auto export current page */
+  progress_export();
+  
   return TRUE;
 }
 

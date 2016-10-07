@@ -439,6 +439,8 @@ on_filePrintPDF_activate               (GtkMenuItem     *menuitem,
   }
   set_cursor_busy(FALSE);
   g_free(filename);
+  /* auto export current page */
+  progress_export();
 }
 
 void

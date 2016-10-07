@@ -89,6 +89,7 @@ gboolean pdf_parse_info(GString *pdfbuf, struct PdfInfo *pdfinfo, struct XrefTab
 
 // main printing functions
 
+gboolean progress_export(void);
 gboolean print_to_pdf(char *filename);
 gboolean print_to_pdf_part(char *filename, int p_start, int p_count);
 
